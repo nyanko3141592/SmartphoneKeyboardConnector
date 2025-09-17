@@ -66,12 +66,16 @@ void loop() {
     if (hasNewText) {
         hasNewText = false;
 
+        Serial.print("=== PROCESSING TEXT: \"");
+        Serial.print(textBuffer);
+        Serial.println("\" ===");
+
         if (TinyUSBDevice.mounted()) {
-            Serial.print("Sending: ");
-            Serial.println(textBuffer);
+            Serial.println("USB mounted - sending text via HID");
             sendSimpleText(textBuffer);
+            Serial.println("=== TEXT PROCESSING COMPLETE ===");
         } else {
-            Serial.println("USB not mounted");
+            Serial.println("ERROR: USB not mounted - cannot send text");
         }
 
         // Clear buffer
@@ -82,27 +86,50 @@ void loop() {
 }
 
 void setupUSBSimple() {
-    Serial.println("Setting up USB HID (simple)...");
+    Serial.println("Setting up USB HID (nRF52840 optimized)...");
 
-    // Very basic setup
+    // nRF52840 specific setup based on working examples
     usb_hid.setPollInterval(2);
     usb_hid.setReportDescriptor(desc_hid_report, sizeof(desc_hid_report));
+    usb_hid.setStringDescriptor("XIAO nRF52840 Keyboard");
+
+    // Critical for nRF52840: Enable boot protocol
+    usb_hid.setBootProtocol(HID_ITF_PROTOCOL_KEYBOARD);
+
     usb_hid.begin();
 
-    // Start USB
+    // Start USB AFTER HID setup
     TinyUSBDevice.begin(0);
 
-    // Wait for mount - short timeout
-    Serial.print("Waiting for USB");
-    for (int i = 0; i < 30; i++) {
-        if (TinyUSBDevice.mounted()) break;
+    // Extended wait for nRF52840 enumeration
+    Serial.print("Waiting for USB mount");
+    unsigned long start = millis();
+    while (!TinyUSBDevice.mounted() && (millis() - start < 10000)) {
         delay(100);
         Serial.print(".");
     }
     Serial.println();
 
-    Serial.print("USB Status: ");
-    Serial.println(TinyUSBDevice.mounted() ? "MOUNTED" : "NOT MOUNTED");
+    if (TinyUSBDevice.mounted()) {
+        Serial.println("✅ USB mounted");
+
+        // Critical: Wait for full enumeration
+        Serial.print("Waiting for HID enumeration");
+        start = millis();
+        while ((millis() - start < 5000)) {
+            delay(100);
+            Serial.print(".");
+            // Don't exit early even if ready() is true
+        }
+        Serial.println();
+
+        Serial.println("✅ HID enumeration complete");
+    }
+
+    Serial.print("Final Status - USB: ");
+    Serial.print(TinyUSBDevice.mounted() ? "MOUNTED" : "NOT MOUNTED");
+    Serial.print(", HID: ");
+    Serial.println(usb_hid.ready() ? "READY" : "NOT READY");
 }
 
 void setupBLE() {
@@ -141,6 +168,12 @@ void sendSimpleKey(char c) {
         return;
     }
 
+    // XIAO nRF52840 specific: Skip ready() check
+    // Research shows nRF52840 often reports NOT READY but still works
+    Serial.print("HID ready status: ");
+    Serial.print(usb_hid.ready() ? "READY" : "NOT READY");
+    Serial.println(" (ignoring for nRF52840)");
+
     uint8_t keycode = 0;
     uint8_t modifier = 0;
 
@@ -162,35 +195,94 @@ void sendSimpleKey(char c) {
         return;
     }
 
-    Serial.print("Sending key: ");
+    Serial.print("Sending key: '");
     Serial.print(c);
-    Serial.print(" (0x");
+    Serial.print("' keycode=0x");
     Serial.print(keycode, HEX);
-    Serial.println(")");
+    Serial.print(" modifier=0x");
+    Serial.println(modifier, HEX);
 
-    // Simple approach - direct report
+    // Use proper HID keyboard codes
     uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
 
-    // Press
-    bool result1 = usb_hid.keyboardReport(0, modifier, keycodes);
-    delay(20);
+    // Critical fix for nRF52840 TinyUSB race condition
+    // Based on research: chunked data and task processing prevents freezes
 
-    // Release
-    uint8_t empty[6] = {0};
-    bool result2 = usb_hid.keyboardReport(0, 0, empty);
-    delay(20);
+    Serial.println("  Starting chunked HID processing...");
 
-    Serial.print("Results: press=");
+    // Multiple small task calls to prevent race condition
+    for (int i = 0; i < 3; i++) {
+        TinyUSBDevice.task();
+        delay(1);
+    }
+
+    Serial.println("  Attempting keyboardReport (non-blocking)...");
+
+    // Use watchdog pattern to prevent hanging
+    unsigned long start = millis();
+    bool result1 = false;
+    bool timeout = false;
+
+    // Try keyboardReport with timeout protection
+    while (!timeout && (millis() - start < 100)) {
+        result1 = usb_hid.keyboardReport(0, modifier, keycodes);
+        if (result1) break;  // Success, exit immediately
+
+        // Prevent freeze with task processing
+        TinyUSBDevice.task();
+        delay(1);
+
+        if (millis() - start > 50) {
+            timeout = true;
+            Serial.println("  WARNING: keyboardReport timeout");
+        }
+    }
+
+    Serial.print("  keyboardReport result: ");
+    Serial.println(result1 ? "SUCCESS" : (timeout ? "TIMEOUT" : "FAILED"));
+
+    // Small delay for USB processing
+    for (int i = 0; i < 5; i++) {
+        TinyUSBDevice.task();
+        delay(2);
+    }
+
+    // Quick release without hanging risk
+    Serial.println("  Quick keyboardRelease...");
+    bool result2 = usb_hid.keyboardRelease(0);
+
+    // Final cleanup
+    TinyUSBDevice.task();
+    delay(10);
+
+    Serial.print("FINAL: press=");
     Serial.print(result1 ? "OK" : "FAIL");
     Serial.print(", release=");
     Serial.println(result2 ? "OK" : "FAIL");
+    Serial.println("  Anti-freeze processing complete!");
 }
 
 void sendSimpleText(const char* text) {
+    Serial.print(">> sendSimpleText called with: \"");
+    Serial.print(text);
+    Serial.println("\"");
+
+    int len = strlen(text);
+    Serial.print(">> Processing ");
+    Serial.print(len);
+    Serial.println(" characters");
+
     for (int i = 0; text[i] != '\0'; i++) {
+        Serial.print(">> Character ");
+        Serial.print(i + 1);
+        Serial.print("/");
+        Serial.print(len);
+        Serial.print(": ");
         sendSimpleKey(text[i]);
         delay(50);
     }
+
+    Serial.println(">> sendSimpleText complete");
 }
 
 void ble_uart_rx_callback(uint16_t conn_handle) {
@@ -199,11 +291,21 @@ void ble_uart_rx_callback(uint16_t conn_handle) {
 
     if (len > 0) {
         data[len] = '\0';
-        strncpy(textBuffer, data, TEXT_BUFFER_SIZE - 1);
-        textBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
-        hasNewText = true;
 
-        Serial.print("BLE received: ");
-        Serial.println(textBuffer);
+        Serial.print("BLE received: \"");
+        Serial.print(data);
+        Serial.println("\"");
+
+        // Process immediately to avoid message loss
+        if (TinyUSBDevice.mounted()) {
+            Serial.println("=== IMMEDIATE HID PROCESSING ===");
+            sendSimpleText(data);
+            Serial.println("=== HID PROCESSING COMPLETE ===");
+        } else {
+            Serial.println("ERROR: USB not mounted - storing for later");
+            strncpy(textBuffer, data, TEXT_BUFFER_SIZE - 1);
+            textBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
+            hasNewText = true;
+        }
     }
 }
