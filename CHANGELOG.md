@@ -24,6 +24,7 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - Migrated from custom BLE service to Nordic UART Service for better compatibility
 - Implemented simplified TinyUSB initialization to avoid enumeration hangs
 - Added immediate BLE message processing to prevent message loss
+ - Refactored main Arduino firmware to minimal HID-first, BLE-second init aligned with Adafruit HID example; reduced Serial usage to stabilize enumeration
 
 ### Fixed
 - BLE device discovery issues in iOS app

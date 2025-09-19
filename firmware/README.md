@@ -48,15 +48,13 @@ https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
 
 ## ファームウェアの書き込み
 
-### 1. Arduino スケッチの準備
+### 1. Arduino スケッチ
 
-```bash
-# firmware ディレクトリで Arduino 用フォルダを作成
-mkdir arduino_version
-cp src/main.cpp arduino_version/xiao_keyboard.ino
-```
+推奨の検証フロー：
 
-もしくは既存の `arduino_version/xiao_keyboard.ino` を使用
+- HID のみの最小検証: `arduino_version/hid_minimal/`
+- 最小 BLE→HID 検証: `arduino_version/hid_ble_minimal/`
+- メイン実装（最小構成へリファクタ済み）: `arduino_version/xiao_keyboard/`
 
 ### 2. Arduino IDE での設定
 
@@ -83,17 +81,11 @@ cp src/main.cpp arduino_version/xiao_keyboard.ino
 1. Arduino IDE で **ツール** → **シリアルモニタ** を選択
 2. ボーレートを **115200** に設定
 
-期待される出力：
+期待される出力（メイン実装例）：
 ```
-Simple Xiao BLE Keyboard Starting...
-Initializing USB HID...
-USB HID initialized
-Initializing BLE...
-BLE initialized
-Starting BLE advertising...
+USB mounted
 Advertising started
-Setup complete. Ready for connections.
-USB connected
+Ready for connections
 ```
 
 ### LED の確認
@@ -132,14 +124,13 @@ lsusb -v | grep -A 10 -B 5 "Keyboard"
 
 ### BLE サービス
 
-- **Service UUID**: `12345678-1234-5678-1234-56789ABCDEF0`
-- **Text Characteristic**: `12345678-1234-5678-1234-56789ABCDEF1` (Write)
+- **Service UUID**: Nordic UART Service (NUS) `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
+- **Text Characteristic (Write)**: `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
 
 ### USB HID
 
-- 標準 USB キーボードとして認識
-- ASCII 文字入力サポート
-- 基本的な特殊文字対応
+- 標準 USB Boot Keyboard として認識（Adafruit TinyUSB 例と同等の初期化）
+- ASCII 文字入力サポート（英数・一部記号）
 
 ### 対応文字
 
@@ -187,13 +178,13 @@ sudo chmod 666 /dev/cu.usbmodem*
 
 ### 文字が正しく入力されない
 
-1. **キーボード設定**
-   - US 配列に設定
-   - IME を有効にする（日本語入力の場合）
+1. **HID 列挙が安定しない**
+   - `hid_minimal` で先に HID Keyboard として列挙されるか確認
+   - ケーブル/ポート変更、ハブを避けて直挿し
 
-2. **テスト用文字列**
+2. **キー入力の整合**
    - まず英数字のみで試す: "hello123"
-   - 成功したら日本語を試す: "こんにちは"
+   - OS のキーボード配列（US/JP）を確認
 
 ## 代替方法：UF2 ファイルを使用
 

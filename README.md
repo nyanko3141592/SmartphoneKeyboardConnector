@@ -4,7 +4,7 @@
 
 ## 概要
 
-このプロジェクトは、スマートフォン（iOS）からのテキスト入力を Bluetooth Low Energy (BLE)で受信し、Seeed XIAO nRF52840 デバイスで USB HID キーボード信号に変換して PC に送信するシステムです。
+このプロジェクトは、スマートフォン（iOS）からのテキスト入力を Bluetooth Low Energy (BLE) で受信し、Seeed XIAO nRF52840 デバイスで USB HID キーボード信号に変換して PC に送信するシステムです。最新のファームウェアは Adafruit TinyUSB の公式 HID キーボード例に準拠した初期化で安定動作します。
 
 ## システム構成
 
@@ -26,7 +26,9 @@ SmartphoneKeyboardConnector/
 ├── EasyKeyboard/           # iOS SwiftUI アプリ
 ├── firmware/
 │   └── arduino_version/
-│       └── xiao_keyboard/  # Arduino IDE用ファームウェア
+│       ├── xiao_keyboard/      # メイン: BLE→HID ブリッジ（最小構成にリファクタ済み）
+│       ├── hid_minimal/        # 検証用: HIDのみ（Adafruit例と同等）
+│       └── hid_ble_minimal/    # 検証用: 最小 BLE→HID（安定版の参照実装）
 ├── docs/                   # プロジェクトドキュメント
 ├── CHANGELOG.md           # 開発履歴
 └── README.md              # このファイル
@@ -48,16 +50,19 @@ SmartphoneKeyboardConnector/
    - Adafr i uit Bluefruit nRF52 Libraries
    - Adafruit TinyUSB Library
 
-#### 書き込み手順
+#### 書き込み手順（Arduino IDE）
 
 ```bash
 # ファームウェアを開く
 open firmware/arduino_version/xiao_keyboard/xiao_keyboard.ino
 ```
 
-1. ボード設定: **Seeed XIAO nRF52840**
+1. ボード設定: **Seeed XIAO nRF52840**（Sense でも可）
 2. Xiao をブートローダーモードにして USB 接続（リセットボタン 2 回押し）
 3. 書き込み実行
+
+補足:
+- HID 列挙の検証には `firmware/arduino_version/hid_minimal/` を、最小 BLE→HID の比較検証には `firmware/arduino_version/hid_ble_minimal/` を用意しています。
 
 ### 2. iOS アプリビルド
 
@@ -86,15 +91,16 @@ open EasyKeyboard.xcodeproj
 
 ### Firmware
 
-- **開発環境**: Arduino IDE
+- **開発環境**: Arduino IDE（Seeeduino nRF52 ボードパッケージ）
 - **ライブラリ**: Adafruit Bluefruit nRF52, Adafruit TinyUSB
-- **プロトコル**: USB HID Boot Keyboard Protocol
+- **USB**: Boot Keyboard Protocol（HID）
+- **初期化順**: HID 初期化 → USB マウント待ち → BLE 開始（Adafruit 例と同等）
 
 ## 開発状況
 
 - ✅ **BLE 通信**: iOS ↔ XIAO 完了
 - ✅ **USB 列挙**: nRF52840 TinyUSB ハング問題解決
-- ⚠️ **HID 入力**: 実装完了、最終テスト中
+- ✅ **HID 入力**: 安定化（Adafruit 例と同等の初期化に統一）
 
 詳細な開発履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
@@ -109,8 +115,9 @@ open EasyKeyboard.xcodeproj
 
 2. **USB HID が動作しない**
 
-   - PC で Xiao が USB デバイスとして認識されているか確認
-   - シリアル出力で"USB MOUNTED"状態を確認
+   - macOS の「システム情報 > USB」で `HID Keyboard` が出るか確認
+   - 検証用 `hid_minimal` スケッチで HID 列挙を先に確認（A0〜A3 で矢印キー）
+   - 列挙が不安定な場合はケーブル/ポートを変更、ハブ経由を避ける
 
 3. **ファームウェアコンパイルエラー**
    - ボード設定が「Seeed XIAO nRF52840」になっているか確認
