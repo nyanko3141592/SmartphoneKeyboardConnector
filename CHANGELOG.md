@@ -10,10 +10,16 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - Nordic UART Service (NUS) for BLE communication
 - Anti-freeze protection for nRF52840 TinyUSB issues
 - Comprehensive debug output for troubleshooting
+- Minimal HID-only Arduino sketch for enumeration test (`firmware/arduino_version/hid_minimal/`)
+- Minimal BLE→HID bridge sketch added (`firmware/arduino_version/hid_ble_minimal/`) based on Adafruit HID example
 
 ### Changed
 - Adjusted TinyUSB HID startup sequence to enumerate the keyboard interface reliably
 - Aligned firmware BLE service/characteristic UUIDs with the iOS client configuration
+- Switched Arduino sketch key handling to TinyUSB sendReport for deterministic HID output
+- HID descriptor now uses explicit Report ID 1 and matching report_id in sendReport calls
+- Removed blocking test key send in setup and added HID-ready guard to prevent main loop starvation
+- Align USB HID init to Adafruit example: construct HID with descriptor, remove TinyUSBDevice.begin(), and use keyboardReport/keyboardRelease; fallback to Boot Keyboard descriptor (no Report ID)
 - Switched from PlatformIO to Arduino IDE for firmware development
 - Migrated from custom BLE service to Nordic UART Service for better compatibility
 - Implemented simplified TinyUSB initialization to avoid enumeration hangs
