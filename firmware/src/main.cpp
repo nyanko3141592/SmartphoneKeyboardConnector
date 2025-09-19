@@ -8,9 +8,9 @@
 #include <bluefruit.h>
 #include <Adafruit_TinyUSB.h>
 
-// BLE Service & Characteristics UUIDs
-#define SERVICE_UUID        "12345678-1234-5678-1234-56789ABCDEF0"
-#define CHAR_UUID_TEXT      "12345678-1234-5678-1234-56789ABCDEF1"
+// BLE Service & Characteristics UUIDs (Nordic UART Service to match iOS client)
+#define SERVICE_UUID        "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHAR_UUID_TEXT      "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // USB HID
 Adafruit_USBD_HID usb_hid;
@@ -128,13 +128,12 @@ void setupBLE() {
 void setupUSB() {
     Serial.println("Initializing USB HID...");
 
-    // Initialize USB
-    TinyUSBDevice.begin();
-
-    // Setup HID
-    usb_hid.setPollInterval(2);
+    // Configure HID before starting TinyUSB so the interface enumerates correctly
     usb_hid.setReportDescriptor(hid_report_descriptor, sizeof(hid_report_descriptor));
+    usb_hid.setPollInterval(2);
     usb_hid.begin();
+
+    TinyUSBDevice.begin();
 
     // Wait for USB mount
     while (!TinyUSBDevice.mounted()) {

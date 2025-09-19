@@ -12,6 +12,8 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - Comprehensive debug output for troubleshooting
 
 ### Changed
+- Adjusted TinyUSB HID startup sequence to enumerate the keyboard interface reliably
+- Aligned firmware BLE service/characteristic UUIDs with the iOS client configuration
 - Switched from PlatformIO to Arduino IDE for firmware development
 - Migrated from custom BLE service to Nordic UART Service for better compatibility
 - Implemented simplified TinyUSB initialization to avoid enumeration hangs
