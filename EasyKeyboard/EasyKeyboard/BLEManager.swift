@@ -19,6 +19,11 @@ class BLEManager: NSObject, ObservableObject {
     @Published var connectedDevice: CBPeripheral?
     @Published var statusMessage = "Not connected"
 
+    // Modes
+    @Published var immediateSendEnabled = false
+    @Published var unicodeModeEnabled = false
+    @Published var immediateClearEnabled = false
+
     private var centralManager: CBCentralManager!
     private var textCharacteristic: CBCharacteristic?
     private var statusCharacteristic: CBCharacteristic?
@@ -126,6 +131,48 @@ class BLEManager: NSObject, ObservableObject {
         }
 
         logger.info("Text send attempt completed")
+    }
+
+    // MARK: - Immediate send helpers
+
+    /// Send only appended content from oldText -> newText.
+    /// If text was shortened (deletion), this does nothing.
+    func sendDelta(old oldText: String, new newText: String) {
+        guard isConnected else { return }
+
+        // Fast path: if new is shorter, ignore in immediate mode
+        guard newText.count > oldText.count else { return }
+
+        // Compute common prefix length in terms of Character (grapheme) indices
+        let oldChars = Array(oldText)
+        let newChars = Array(newText)
+
+        var i = 0
+        while i < oldChars.count && i < newChars.count && oldChars[i] == newChars[i] {
+            i += 1
+        }
+
+        // Appended characters only when insertion at the end or after replacement
+        let appended = newChars.suffix(newChars.count - i)
+        guard !appended.isEmpty else { return }
+
+        let appendedString = String(appended)
+
+        if unicodeModeEnabled {
+            sendUnicode(appendedString)
+        } else {
+            sendText(appendedString)
+        }
+    }
+
+    /// Send text as Unicode code points (hex), for firmware that expects explicit code points.
+    /// Format: "U+XXXX" tokens separated by spaces. Example: "A あ" -> "U+0041 U+3042".
+    func sendUnicode(_ text: String) {
+        let scalars = text.unicodeScalars.map { scalar in
+            String(format: "U+%04X", scalar.value)
+        }
+        let payload = scalars.joined(separator: " ")
+        sendText(payload)
     }
 }
 

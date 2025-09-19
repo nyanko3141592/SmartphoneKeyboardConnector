@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
     @State private var inputText = ""
+    @State private var previousText = ""
     @State private var showDeviceList = false
     @FocusState private var isTextFieldFocused: Bool
 
@@ -42,77 +43,123 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
 
-                // Main Input Area
-                VStack(spacing: 16) {
+                // Main Input Area (compact)
+                VStack(spacing: 12) {
                     Text("EasyKeyboard")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .font(.title3)
+                        .fontWeight(.semibold)
 
-                    Text("Type on your phone, send to PC")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    // One-line input and small actions
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("入力")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
 
-                    // Text Input Field
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Enter Text")
-                            .font(.headline)
+                        HStack(spacing: 8) {
+                            TextField("ここに入力", text: $inputText)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($isTextFieldFocused)
+                                .onChange(of: inputText) { newValue in
+                                    if bleManager.immediateSendEnabled {
+                                        bleManager.sendDelta(old: previousText, new: newValue)
 
-                        TextEditor(text: $inputText)
-                            .frame(minHeight: 150)
-                            .padding(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
-                            .focused($isTextFieldFocused)
-                    }
-                    .padding(.horizontal)
+                                        // 即時送信時に入力欄をクリア（任意）
+                                        if bleManager.immediateClearEnabled, !newValue.isEmpty {
+                                            DispatchQueue.main.async {
+                                                self.inputText = ""
+                                                self.previousText = ""
+                                            }
+                                            return
+                                        }
+                                    }
+                                    previousText = newValue
+                                }
 
-                    // Send Button
-                    Button(action: sendText) {
-                        Label("Send to PC", systemImage: "paperplane.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(bleManager.isConnected ? Color.blue : Color.gray)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                    }
-                    .disabled(!bleManager.isConnected || inputText.isEmpty)
-                    .padding(.horizontal)
+                            if isTextFieldFocused {
+                                Button {
+                                    isTextFieldFocused = false
+                                } label: {
+                                    Image(systemName: "keyboard.chevron.compact.down")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                            }
 
-                    // Test Send Button
-                    Button(action: sendTestText) {
-                        Label("Test Send", systemImage: "testtube.2")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(bleManager.isConnected ? Color.orange : Color.gray)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                    }
-                    .disabled(!bleManager.isConnected)
-                    .padding(.horizontal)
+                            if !inputText.isEmpty {
+                                Button {
+                                    inputText = ""
+                                    previousText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                            }
+                        }
 
-                    // Clear Button
-                    if !inputText.isEmpty {
-                        Button(action: { inputText = "" }) {
-                            Label("Clear", systemImage: "xmark.circle")
-                                .font(.caption)
+                        // Compact action buttons
+                        HStack(spacing: 8) {
+                            Button(action: sendText) {
+                                Label("Send", systemImage: "paperplane.fill")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!bleManager.isConnected || inputText.isEmpty)
+
+                            Button(action: sendTestText) {
+                                Text("Test")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .disabled(!bleManager.isConnected)
+
+                            Spacer()
+                        }
+
+                        // Mode toggles (compact)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle(isOn: $bleManager.immediateSendEnabled) {
+                                Text("Immediate Send (per char)")
+                            }
+                            .tint(.blue)
+
+                            if bleManager.immediateSendEnabled {
+                                Toggle(isOn: $bleManager.immediateClearEnabled) {
+                                    Text("Immediate Clear (after send)")
+                                }
+                                .tint(.red)
+                            }
+
+                            Toggle(isOn: $bleManager.unicodeModeEnabled) {
+                                Text("Unicode Mode (U+XXXX)")
+                            }
+                            .tint(.purple)
+
+                            Text("IME変換中は即時送信をオフ推奨")
+                                .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .padding(.horizontal)
                 }
 
                 Spacer()
 
-                // Keyboard Shortcut Info
-                VStack(spacing: 8) {
-                    Text("Tip: Press ⌘+Return to send")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.bottom)
+                // Bottom spacing
+                .padding(.bottom, 8)
             }
             .navigationBarHidden(true)
+        }
+        // Keyboard toolbar with a close button
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button {
+                    isTextFieldFocused = false
+                } label: {
+                    Label("キーボードを閉じる", systemImage: "keyboard.chevron.compact.down")
+                }
+            }
         }
         .sheet(isPresented: $showDeviceList) {
             DeviceListView(bleManager: bleManager, isPresented: $showDeviceList)
@@ -127,7 +174,11 @@ struct ContentView: View {
 
     private func sendText() {
         guard !inputText.isEmpty else { return }
-        bleManager.sendText(inputText)
+        if bleManager.unicodeModeEnabled {
+            bleManager.sendUnicode(inputText)
+        } else {
+            bleManager.sendText(inputText)
+        }
 
         // Clear text after sending
         inputText = ""

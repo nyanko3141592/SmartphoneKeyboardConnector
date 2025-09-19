@@ -12,6 +12,10 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - Comprehensive debug output for troubleshooting
 - Minimal HID-only Arduino sketch for enumeration test (`firmware/arduino_version/hid_minimal/`)
 - Minimal BLE→HID bridge sketch added (`firmware/arduino_version/hid_ble_minimal/`) based on Adafruit HID example
+- iOS: Immediate Send mode (per-character BLE send) and Unicode Mode (send U+XXXX codepoints)
+- iOS: Immediate Clear toggle — 即時送信時に送信直後で入力欄を自動クリアできるオプションを追加
+ - iOS: UIコンパクト化 — TextEditorを廃止し1行TextField化、Send/Testボタンを小型化
+ - iOS: キーボードを閉じるボタン（TextEditor直下とキーボードアクセサリバーに追加）
 
 ### Changed
 - Adjusted TinyUSB HID startup sequence to enumerate the keyboard interface reliably
@@ -25,6 +29,7 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - Implemented simplified TinyUSB initialization to avoid enumeration hangs
 - Added immediate BLE message processing to prevent message loss
  - Refactored main Arduino firmware to minimal HID-first, BLE-second init aligned with Adafruit HID example; reduced Serial usage to stabilize enumeration
+ - iOS UI: Added toggles for Immediate Send and Unicode Mode; wired TextEditor on-change to per-character send when enabled
 
 ### Fixed
 - BLE device discovery issues in iOS app
