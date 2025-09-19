@@ -76,7 +76,16 @@ EasyKeyboard/
    - "Immediate Send (per character)": 入力のたびに文字単位で即時送信
      - 併用オプション: "Immediate Clear (after send)" — 送信直後に入力欄を自動クリア
    - "Unicode Mode (send U+XXXX)": 送信内容を Unicode 符号位置 (U+XXXX) 列に変換して送信
+   - "テキストフィールドなしモード（QWERTYボタン）":
+     - 画面下部にキーボードを表示（四角いキー、全面がタップ判定）
+     - レイアウトは `keyboard-layout.json`（アプリバンドル内）に基づく
+     - 文字キーは即時送信、Backspace/Enter/Tabはそれぞれ特殊送信
 6. バッチ送信する場合は "Send to PC" ボタンで送信
+
+### キーイベント送信について
+- バックスペース: テキストが短くなった（削除）と検知した場合、ASCII Backspace(0x08)を送信します
+- リターン(Enter): Returnキー押下時に改行(\n)を送信します
+  - いずれもファームウェア側で適切にHIDキーへマッピングされている必要があります
 
 ## 必要な環境
 

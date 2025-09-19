@@ -15,6 +15,9 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
 - iOS: Immediate Send mode (per-character BLE send) and Unicode Mode (send U+XXXX codepoints)
 - iOS: Immediate Clear toggle — 即時送信時に送信直後で入力欄を自動クリアできるオプションを追加
  - iOS: UIコンパクト化 — TextEditorを廃止し1行TextField化、Send/Testボタンを小型化
+ - iOS: ソフトウェアキーボードのBackspace/Returnに対応（Backspace=0x08、Return=\n を送信）
+ - iOS: テキストフィールドなしモードを追加（QWERTYボタンを表示し、押下で即時送信）
+ - iOS: ボタンキーボードは `keyboard-layout.json` を元にレンダリング。キーは四角で全面が押下判定。
  - iOS: キーボードを閉じるボタン（TextEditor直下とキーボードアクセサリバーに追加）
 
 ### Changed

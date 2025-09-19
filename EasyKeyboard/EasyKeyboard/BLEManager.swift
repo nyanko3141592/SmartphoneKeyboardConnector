@@ -140,29 +140,44 @@ class BLEManager: NSObject, ObservableObject {
     func sendDelta(old oldText: String, new newText: String) {
         guard isConnected else { return }
 
-        // Fast path: if new is shorter, ignore in immediate mode
-        guard newText.count > oldText.count else { return }
-
-        // Compute common prefix length in terms of Character (grapheme) indices
         let oldChars = Array(oldText)
         let newChars = Array(newText)
 
+        // 1) 削除（Backspace）判定
+        if newChars.count < oldChars.count {
+            let diff = oldChars.count - newChars.count
+            sendBackspace(diff)
+            return
+        }
+
+        // 2) 追加文字（または置換による末尾以外の挿入）
         var i = 0
         while i < oldChars.count && i < newChars.count && oldChars[i] == newChars[i] {
             i += 1
         }
 
-        // Appended characters only when insertion at the end or after replacement
         let appended = newChars.suffix(newChars.count - i)
         guard !appended.isEmpty else { return }
 
         let appendedString = String(appended)
-
         if unicodeModeEnabled {
             sendUnicode(appendedString)
         } else {
             sendText(appendedString)
         }
+    }
+
+    /// Backspace キーイベント相当（ASCII BS 0x08）を複数回送信
+    func sendBackspace(_ count: Int = 1) {
+        guard count > 0 else { return }
+        let bs = String(repeating: "\u{0008}", count: count)
+        sendText(bs)
+    }
+
+    /// Return/Enter キーイベント相当（改行）を送信
+    func sendReturn() {
+        // 改行は "\n" とし、ファームウェア側で Enter にマップする想定
+        sendText("\n")
     }
 
     /// Send text as Unicode code points (hex), for firmware that expects explicit code points.
