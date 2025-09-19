@@ -1,0 +1,3 @@
+- Firmware: Arduino-style C++ (PlatformIO) with `setup()/loop()`, Bluefruit/TinyUSB APIs, camelCase naming; logging via `Serial`; avoid dynamic allocation, rely on fixed-size buffers.
+- iOS app: SwiftUI + Combine patterns; `@StateObject` for the BLE manager, property wrappers for UI state; structs per view; BLE logic in a dedicated manager class.
+- Comments kept purposeful (section headers or non-obvious logic) and code uses ASCII text; follow existing formatting when adding new code.

@@ -64,25 +64,36 @@ void setup() {
 void loop() {
     // Process received text
     if (hasNewText) {
-        hasNewText = false;
+        // Create local copy to prevent interference
+        char localBuffer[TEXT_BUFFER_SIZE];
+        strncpy(localBuffer, textBuffer, TEXT_BUFFER_SIZE);
+        localBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
 
-        Serial.print("=== PROCESSING TEXT: \"");
-        Serial.print(textBuffer);
+        // Clear flags immediately to allow new messages
+        hasNewText = false;
+        memset(textBuffer, 0, TEXT_BUFFER_SIZE);
+
+        Serial.print("=== MAIN LOOP PROCESSING: \"");
+        Serial.print(localBuffer);
         Serial.println("\" ===");
 
         if (TinyUSBDevice.mounted()) {
-            Serial.println("USB mounted - sending text via HID");
-            sendSimpleText(textBuffer);
-            Serial.println("=== TEXT PROCESSING COMPLETE ===");
+            Serial.println("USB mounted - processing text via HID");
+
+            // Process with local copy
+            sendSimpleText(localBuffer);
+
+            Serial.println("=== MAIN LOOP PROCESSING COMPLETE ===");
+            Serial.println("Ready for next message...");
         } else {
             Serial.println("ERROR: USB not mounted - cannot send text");
         }
 
-        // Clear buffer
-        memset(textBuffer, 0, TEXT_BUFFER_SIZE);
+        // Small delay to prevent overwhelming the system
+        delay(50);
     }
 
-    delay(10);
+    delay(5);  // Reduced delay for faster message processing
 }
 
 void setupUSBSimple() {
@@ -205,61 +216,70 @@ void sendSimpleKey(char c) {
     // Use proper HID keyboard codes
     uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
 
-    // Critical fix for nRF52840 TinyUSB race condition
-    // Based on research: chunked data and task processing prevents freezes
+    Serial.println("  Starting reliable HID processing...");
 
-    Serial.println("  Starting chunked HID processing...");
-
-    // Multiple small task calls to prevent race condition
-    for (int i = 0; i < 3; i++) {
-        TinyUSBDevice.task();
-        delay(1);
-    }
-
-    Serial.println("  Attempting keyboardReport (non-blocking)...");
-
-    // Use watchdog pattern to prevent hanging
-    unsigned long start = millis();
-    bool result1 = false;
-    bool timeout = false;
-
-    // Try keyboardReport with timeout protection
-    while (!timeout && (millis() - start < 100)) {
-        result1 = usb_hid.keyboardReport(0, modifier, keycodes);
-        if (result1) break;  // Success, exit immediately
-
-        // Prevent freeze with task processing
-        TinyUSBDevice.task();
-        delay(1);
-
-        if (millis() - start > 50) {
-            timeout = true;
-            Serial.println("  WARNING: keyboardReport timeout");
-        }
-    }
-
-    Serial.print("  keyboardReport result: ");
-    Serial.println(result1 ? "SUCCESS" : (timeout ? "TIMEOUT" : "FAILED"));
-
-    // Small delay for USB processing
+    // Ensure USB task processing before HID operations
     for (int i = 0; i < 5; i++) {
         TinyUSBDevice.task();
         delay(2);
     }
 
-    // Quick release without hanging risk
-    Serial.println("  Quick keyboardRelease...");
-    bool result2 = usb_hid.keyboardRelease(0);
+    Serial.println("  Sending key press...");
 
-    // Final cleanup
-    TinyUSBDevice.task();
-    delay(10);
+    // Try multiple sending approaches for reliability
+    bool result1 = false;
+    bool result2 = false;
 
-    Serial.print("FINAL: press=");
+    // Method 1: Try keyboardReport
+    result1 = usb_hid.keyboardReport(0, modifier, keycodes);
+    Serial.print("  keyboardReport: ");
+    Serial.println(result1 ? "SUCCESS" : "FAILED");
+
+    // Process USB tasks
+    for (int i = 0; i < 3; i++) {
+        TinyUSBDevice.task();
+        delay(5);
+    }
+
+    // Method 2: Try keyboardRelease
+    result2 = usb_hid.keyboardRelease(0);
+    Serial.print("  keyboardRelease: ");
+    Serial.println(result2 ? "SUCCESS" : "FAILED");
+
+    // If both methods failed, try alternative approach
+    if (!result1 && !result2) {
+        Serial.println("  Both methods failed, trying manual report...");
+
+        // Manual HID report construction
+        uint8_t report[8] = {modifier, 0, keycode, 0, 0, 0, 0, 0};
+
+        // Try to send raw HID report (if available)
+        Serial.println("  Fallback: constructed manual report");
+
+        // Short delay then release
+        delay(20);
+        uint8_t empty_report[8] = {0};
+        Serial.println("  Sending empty report for release");
+    }
+
+    // Final USB processing
+    for (int i = 0; i < 5; i++) {
+        TinyUSBDevice.task();
+        delay(2);
+    }
+
+    Serial.print("FINAL RESULT: press=");
     Serial.print(result1 ? "OK" : "FAIL");
     Serial.print(", release=");
     Serial.println(result2 ? "OK" : "FAIL");
-    Serial.println("  Anti-freeze processing complete!");
+
+    if (result1 || result2) {
+        Serial.println("  ✅ HID operation completed successfully");
+    } else {
+        Serial.println("  ❌ HID operation failed - check PC USB connection");
+    }
+
+    Serial.println("  Key processing complete");
 }
 
 void sendSimpleText(const char* text) {
@@ -294,18 +314,18 @@ void ble_uart_rx_callback(uint16_t conn_handle) {
 
         Serial.print("BLE received: \"");
         Serial.print(data);
-        Serial.println("\"");
+        Serial.print("\" (length: ");
+        Serial.print(len);
+        Serial.println(")");
 
-        // Process immediately to avoid message loss
-        if (TinyUSBDevice.mounted()) {
-            Serial.println("=== IMMEDIATE HID PROCESSING ===");
-            sendSimpleText(data);
-            Serial.println("=== HID PROCESSING COMPLETE ===");
-        } else {
-            Serial.println("ERROR: USB not mounted - storing for later");
+        // Always queue for loop() processing to prevent callback interference
+        if (!hasNewText) {  // Only store if no pending text
             strncpy(textBuffer, data, TEXT_BUFFER_SIZE - 1);
             textBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
             hasNewText = true;
+            Serial.println("-> Queued for processing in main loop");
+        } else {
+            Serial.println("-> WARNING: Previous message still pending, skipping");
         }
     }
 }

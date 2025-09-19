@@ -1,0 +1,3 @@
+- For firmware changes: rebuild with `pio run` (or Arduino IDE verify) and, if possible, flash to XIAO to validate USB HID output via a host machine while watching the serial log.
+- For iOS changes: build/run on a real iOS device from Xcode, confirm BLE connection, send sample text.
+- Document any manual verification steps or remaining issues in the task notes before handing off.

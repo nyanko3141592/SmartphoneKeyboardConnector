@@ -1,0 +1,5 @@
+- Purpose: Bridge smartphone text input to a PC by relaying BLE UART data from an iOS app to a Seeed XIAO nRF52840 that enumerates as a USB HID keyboard.
+- Components: `EasyKeyboard` SwiftUI iOS app (CoreBluetooth, BLE manager UI) and `firmware` Arduino/PlatformIO sketch for the XIAO using Adafruit Bluefruit + TinyUSB.
+- Key BLE service: custom UART-like service `12345678-1234-5678-1234-56789ABCDEF0` with write characteristic `...F1`; USB side uses TinyUSB HID keyboard reports.
+- Typical workflow: build & flash firmware to XIAO, run iOS app, pair over BLE, typed text becomes USB keystrokes on the host PC.
+- Docs: High-level setup in project `README.md`; detailed firmware instructions in `firmware/README.md`; iOS app usage in `EasyKeyboard/README.md`.

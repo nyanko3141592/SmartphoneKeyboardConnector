@@ -1,0 +1,6 @@
+- `cd firmware && pio run` — build the XIAO firmware with PlatformIO.
+- `cd firmware && pio run -t upload` — upload firmware via nrfutil (XIAO in bootloader mode).
+- `cd firmware && open arduino_version/xiao_keyboard/xiao_keyboard.ino` — open the Arduino sketch in Arduino IDE as an alternative workflow.
+- `./start_arduino.sh` — launch Arduino IDE with the expected Python path on macOS.
+- `cd EasyKeyboard && open EasyKeyboard.xcodeproj` — open the iOS app in Xcode for build/run on device.
+- `screen /dev/cu.usbmodem* 115200` (or Arduino Serial Monitor) — view firmware debug logs while testing.
