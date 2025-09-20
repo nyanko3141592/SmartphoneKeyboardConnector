@@ -45,13 +45,20 @@ struct ContentView: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                topBar
+            VStack(spacing: 12) {
                 mainContent
-                Spacer()
+                if selectedMode != .keyboard {
+                    Spacer()
+                }
             }
             .padding(.bottom, 8)
             .navigationBarHidden(true)
+        }
+        .safeAreaInset(edge: .top) {
+            topBar
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+                .background(.ultraThinMaterial, ignoresSafeAreaEdges: .top)
         }
         .toolbar { keyboardToolbar }
         .sheet(isPresented: $showDeviceList) {
@@ -128,14 +135,11 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(spacing: selectedMode == .keyboard ? 8 : 12) {
-            Text("EasyKeyboard")
-                .font(selectedMode == .keyboard ? .subheadline : .title3)
-                .fontWeight(.semibold)
-
+        VStack(spacing: selectedMode == .keyboard ? 4 : 12) {
             modeSpecificContent
                 .padding(.horizontal)
         }
+        .frame(minHeight: selectedMode == .keyboard ? 30 : 100)
     }
 
     @ViewBuilder
@@ -216,12 +220,10 @@ struct ContentView: View {
     }
 
     private var keyboardSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("画面下部のQWERTYキーボードから即時入力できます")
-                .font(.subheadline)
+        VStack(spacing: 10) {
+            Text("キーボードモード")
+                .font(.caption)
                 .foregroundColor(.secondary)
-
-            sharedOptionSection
         }
     }
 
@@ -351,6 +353,27 @@ struct ContentView: View {
     private func keyboardInset(layout: ParsedKeyboardLayout) -> some View {
         let isMobile = horizontalSizeClass == .compact
         VStack(spacing: isMobile ? 3 : 8) {
+            // 縦型（compact）の場合のみトラックパッドを表示
+            if isMobile {
+                CompactTrackpadView(
+                    sensitivity: trackpadSensitivity,
+                    onMove: { dx, dy in
+                        bleManager.sendMouseMove(dx: dx, dy: dy)
+                    },
+                    onLeftClick: {
+                        bleManager.sendMouseClick(.left)
+                    },
+                    onMiddleClick: {
+                        bleManager.sendMouseClick(.middle)
+                    },
+                    onRightClick: {
+                        bleManager.sendMouseClick(.right)
+                    }
+                )
+                .padding(.bottom, 4)
+            }
+
+            // キーボード行
             ForEach(0..<layout.rows.count, id: \.self) { index in
                 let row = layout.rows[index]
                 KeyboardRowView(row: row, isMobile: isMobile) { tapped in
@@ -535,6 +558,99 @@ struct TrackpadSurface: View {
         .gesture(dragGesture)
         .highPriorityGesture(tapGestures)
         .simultaneousGesture(longPressGesture)
+    }
+
+    private func accumulate(delta: CGSize) {
+        let scale = CGFloat(sensitivity)
+        accumulator.width += delta.width * scale
+        accumulator.height += delta.height * scale
+
+        let stepX = Int(accumulator.width.rounded(.towardZero))
+        let stepY = Int(accumulator.height.rounded(.towardZero))
+
+        if stepX != 0 || stepY != 0 {
+            onMove(stepX, stepY)
+            accumulator.width -= CGFloat(stepX)
+            accumulator.height -= CGFloat(stepY)
+        }
+    }
+}
+
+struct CompactTrackpadView: View {
+    let sensitivity: Double
+    let onMove: (Int, Int) -> Void
+    let onLeftClick: () -> Void
+    let onMiddleClick: () -> Void
+    let onRightClick: () -> Void
+
+    @State private var previousTranslation: CGSize = .zero
+    @State private var accumulator: CGSize = .zero
+    @State private var isTracking = false
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                isTracking = true
+                let delta = CGSize(
+                    width: value.translation.width - previousTranslation.width,
+                    height: value.translation.height - previousTranslation.height
+                )
+                previousTranslation = value.translation
+                accumulate(delta: delta)
+            }
+            .onEnded { _ in
+                isTracking = false
+                previousTranslation = .zero
+                accumulator = .zero
+            }
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            // トラックパッドエリア
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(UIColor.systemGray6))
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
+            }
+            .frame(minHeight: 100)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .gesture(dragGesture)
+
+            // クリックボタン
+            HStack(spacing: 6) {
+                Button {
+                    onLeftClick()
+                } label: {
+                    Text("左")
+                        .font(.caption2)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onMiddleClick()
+                } label: {
+                    Text("中")
+                        .font(.caption2)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onRightClick()
+                } label: {
+                    Text("右")
+                        .font(.caption2)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
     }
 
     private func accumulate(delta: CGSize) {
