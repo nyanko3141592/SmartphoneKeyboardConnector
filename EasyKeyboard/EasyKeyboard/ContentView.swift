@@ -45,7 +45,7 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                connectionStatus
+                topBar
                 mainContent
                 Spacer()
             }
@@ -67,31 +67,63 @@ struct ContentView: View {
         }
     }
 
-    private var connectionStatus: some View {
-        HStack {
-            Circle()
-                .fill(bleManager.isConnected ? Color.green : Color.red)
-                .frame(width: 10, height: 10)
-
-            Text(bleManager.statusMessage)
-                .font(.caption)
-                .foregroundColor(.secondary)
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Picker("モード", selection: $selectedMode) {
+                ForEach(InputMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.systemImage)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
 
             Spacer()
 
+            connectionStatusMenu
+        }
+        .padding(.horizontal)
+    }
+
+    private var connectionStatusMenu: some View {
+        Menu {
             if bleManager.isConnected {
                 Button("Disconnect") {
                     bleManager.disconnect()
                 }
-                .font(.caption)
-            } else {
-                Button("Connect") {
+                Button("デバイスを再選択") {
                     showDeviceList = true
                 }
-                .font(.caption)
+            } else {
+                Button("デバイスをスキャン") {
+                    showDeviceList = true
+                }
             }
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(bleManager.isConnected ? Color.green : Color.red)
+                    .frame(width: 10, height: 10)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(bleManager.isConnected ? "接続中" : "未接続")
+                        .font(.footnote)
+                        .fontWeight(.semibold)
+                    Text(bleManager.statusMessage)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: 140, alignment: .leading)
+                }
+
+                Image(systemName: "chevron.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
         }
-        .padding(.horizontal)
     }
 
     private var mainContent: some View {
@@ -100,18 +132,8 @@ struct ContentView: View {
                 .font(selectedMode == .keyboard ? .subheadline : .title3)
                 .fontWeight(.semibold)
 
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("モード", selection: $selectedMode) {
-                    ForEach(InputMode.allCases) { mode in
-                        Label(mode.label, systemImage: mode.systemImage)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                modeSpecificContent
-            }
-            .padding(.horizontal)
+            modeSpecificContent
+                .padding(.horizontal)
         }
     }
 
