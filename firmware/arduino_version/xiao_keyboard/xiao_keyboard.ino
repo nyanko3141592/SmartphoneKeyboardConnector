@@ -7,19 +7,26 @@
 
 #include <Adafruit_TinyUSB.h>
 #include <bluefruit.h>
+#include <strings.h>
+#include <string.h>
 
 // BLE Service & Characteristics UUIDs - Nordic UART Service
 #define SERVICE_UUID        "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHAR_UUID_TEXT      "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
-// HID report descriptor for keyboard
-// Fallback to boot keyboard descriptor (no Report ID)
+enum {
+    RID_KEYBOARD = 1,
+    RID_MOUSE,
+};
+
+// HID report descriptor for keyboard + mouse composite
 uint8_t const desc_hid_report[] = {
-    TUD_HID_REPORT_DESC_KEYBOARD()
+    TUD_HID_REPORT_DESC_KEYBOARD( HID_REPORT_ID(RID_KEYBOARD) ),
+    TUD_HID_REPORT_DESC_MOUSE   ( HID_REPORT_ID(RID_MOUSE) )
 };
 
 // USB HID instance constructed with descriptor (matches Adafruit example)
-Adafruit_USBD_HID usb_hid(desc_hid_report, sizeof(desc_hid_report), HID_ITF_PROTOCOL_KEYBOARD, 2, false);
+Adafruit_USBD_HID usb_hid(desc_hid_report, sizeof(desc_hid_report), HID_ITF_PROTOCOL_NONE, 2, false);
 
 // Nordic UART Service を使用
 BLEUart bleuart;
@@ -31,6 +38,15 @@ volatile bool hasNewText = false;
 
 // Connection status
 bool bleConnected = false;
+
+void handleCommand(const char* command);
+void handleMouseCommand(char* payload);
+uint8_t mouseButtonMaskFromString(const char* token);
+void sendMouseMove(int dx, int dy);
+void sendMouseScroll(int delta);
+void sendMouseClick(uint8_t buttonMask);
+void sendMouseDoubleClick(uint8_t buttonMask);
+int8_t clampToInt8(int value);
 
 void setup() {
     // Start HID first (align with Adafruit example)
@@ -177,9 +193,9 @@ void sendSimpleKey(char c) {
     }
 
     uint8_t keycodes[6] = {keycode, 0, 0, 0, 0, 0};
-    usb_hid.keyboardReport(0, modifier, keycodes);
+    usb_hid.keyboardReport(RID_KEYBOARD, modifier, keycodes);
     delay(6);
-    usb_hid.keyboardRelease(0);
+    usb_hid.keyboardRelease(RID_KEYBOARD);
     delay(6);
 }
 
@@ -191,12 +207,106 @@ void sendSimpleText(const char* text) {
     }
 }
 
+void handleCommand(const char* command) {
+    if (!command) return;
+
+    if (strncmp(command, "MOUSE:", 6) == 0) {
+        char payload[TEXT_BUFFER_SIZE];
+        strncpy(payload, command + 6, sizeof(payload) - 1);
+        payload[sizeof(payload) - 1] = '\0';
+        handleMouseCommand(payload);
+    }
+}
+
+void handleMouseCommand(char* payload) {
+    char* action = strtok(payload, ":");
+    if (!action) return;
+
+    if (strcasecmp(action, "MOVE") == 0) {
+        char* dxToken = strtok(NULL, ":");
+        char* dyToken = strtok(NULL, ":");
+        if (!dxToken || !dyToken) return;
+        int dx = atoi(dxToken);
+        int dy = atoi(dyToken);
+        sendMouseMove(dx, dy);
+    } else if (strcasecmp(action, "CLICK") == 0) {
+        char* buttonToken = strtok(NULL, ":");
+        uint8_t mask = mouseButtonMaskFromString(buttonToken);
+        sendMouseClick(mask);
+    } else if (strcasecmp(action, "DOUBLE") == 0) {
+        char* buttonToken = strtok(NULL, ":");
+        uint8_t mask = mouseButtonMaskFromString(buttonToken);
+        sendMouseDoubleClick(mask);
+    } else if (strcasecmp(action, "SCROLL") == 0) {
+        char* deltaToken = strtok(NULL, ":");
+        if (!deltaToken) return;
+        int delta = atoi(deltaToken);
+        sendMouseScroll(delta);
+    }
+}
+
+uint8_t mouseButtonMaskFromString(const char* token) {
+    if (!token) return MOUSE_BUTTON_LEFT;
+
+    if (strcasecmp(token, "LEFT") == 0) {
+        return MOUSE_BUTTON_LEFT;
+    } else if (strcasecmp(token, "RIGHT") == 0) {
+        return MOUSE_BUTTON_RIGHT;
+    } else if (strcasecmp(token, "MIDDLE") == 0 || strcasecmp(token, "CENTER") == 0) {
+        return MOUSE_BUTTON_MIDDLE;
+    }
+
+    return MOUSE_BUTTON_LEFT;
+}
+
+void sendMouseMove(int dx, int dy) {
+    if (TinyUSBDevice.suspended()) TinyUSBDevice.remoteWakeup();
+    if (!usb_hid.ready()) return;
+
+    int8_t x = clampToInt8(dx);
+    int8_t y = clampToInt8(dy);
+    usb_hid.mouseMove(RID_MOUSE, x, y);
+}
+
+void sendMouseScroll(int delta) {
+    if (TinyUSBDevice.suspended()) TinyUSBDevice.remoteWakeup();
+    if (!usb_hid.ready()) return;
+
+    int8_t scroll = clampToInt8(delta);
+    usb_hid.mouseScroll(RID_MOUSE, scroll, 0);
+}
+
+void sendMouseClick(uint8_t buttonMask) {
+    if (TinyUSBDevice.suspended()) TinyUSBDevice.remoteWakeup();
+    if (!usb_hid.ready()) return;
+
+    usb_hid.mouseButtonPress(RID_MOUSE, buttonMask);
+    delay(12);
+    usb_hid.mouseButtonRelease(RID_MOUSE);
+}
+
+void sendMouseDoubleClick(uint8_t buttonMask) {
+    sendMouseClick(buttonMask);
+    delay(80);
+    sendMouseClick(buttonMask);
+}
+
+int8_t clampToInt8(int value) {
+    if (value > 127) return 127;
+    if (value < -127) return -127;
+    return static_cast<int8_t>(value);
+}
+
 void ble_uart_rx_callback(uint16_t conn_handle) {
     char data[TEXT_BUFFER_SIZE];
     uint16_t len = bleuart.read(data, TEXT_BUFFER_SIZE - 1);
 
     if (len > 0) {
         data[len] = '\0';
+        if (strncmp(data, "CMD:", 4) == 0) {
+            handleCommand(data + 4);
+            return;
+        }
         if (!hasNewText) {
             strncpy(textBuffer, data, TEXT_BUFFER_SIZE - 1);
             textBuffer[TEXT_BUFFER_SIZE - 1] = '\0';

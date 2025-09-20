@@ -13,227 +13,340 @@ struct ContentView: View {
     @State private var previousText = ""
     @State private var showDeviceList = false
     @FocusState private var isTextFieldFocused: Bool
-    @State private var buttonKeyboardMode = false
     @State private var parsedLayout: ParsedKeyboardLayout?
+    @State private var selectedMode: InputMode = .text
+    @State private var trackpadSensitivity: Double = 1.4
+    @State private var tapToClickEnabled = true
+
+    enum InputMode: String, CaseIterable, Identifiable {
+        case text
+        case keyboard
+        case mouse
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .text: return "テキスト入力"
+            case .keyboard: return "キーボード"
+            case .mouse: return "マウス"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .text: return "character.cursor.ibeam"
+            case .keyboard: return "keyboard"
+            case .mouse: return "rectangle.and.hand.point.up.left"
+            }
+        }
+    }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                // Connection Status
-                HStack {
-                    Circle()
-                        .fill(bleManager.isConnected ? Color.green : Color.red)
-                        .frame(width: 10, height: 10)
-
-                    Text(bleManager.statusMessage)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    if bleManager.isConnected {
-                        Button("Disconnect") {
-                            bleManager.disconnect()
-                        }
-                        .font(.caption)
-                    } else {
-                        Button("Connect") {
-                            showDeviceList = true
-                        }
-                        .font(.caption)
-                    }
-                }
-                .padding(.horizontal)
-
-                // Main Input Area (compact)
-                VStack(spacing: buttonKeyboardMode ? 8 : 12) {
-                    Text("EasyKeyboard")
-                        .font(buttonKeyboardMode ? .subheadline : .title3)
-                        .fontWeight(.semibold)
-
-                    // One-line input and small actions
-                    VStack(alignment: .leading, spacing: 6) {
-                        if buttonKeyboardMode {
-                            // ボタンキーボードは画面下部に表示するため、ここでは説明のみ
-                            Text("ボタンキーボード有効（下部に表示）")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("入力")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            HStack(spacing: 8) {
-                                TextField("ここに入力", text: $inputText)
-                                    .textFieldStyle(.roundedBorder)
-                                    .focused($isTextFieldFocused)
-                                    .onSubmit {
-                                        // Returnキーを送信
-                                        bleManager.sendReturn()
-                                        if bleManager.immediateClearEnabled {
-                                            inputText = ""
-                                            previousText = ""
-                                        }
-                                    }
-                                    .onChange(of: inputText) { newValue in
-                                        if bleManager.immediateSendEnabled {
-                                            bleManager.sendDelta(old: previousText, new: newValue)
-
-                                            // 即時送信時に入力欄をクリア（任意）
-                                            if bleManager.immediateClearEnabled, !newValue.isEmpty {
-                                                DispatchQueue.main.async {
-                                                    self.inputText = ""
-                                                    self.previousText = ""
-                                                }
-                                                return
-                                            }
-                                        }
-                                        previousText = newValue
-                                    }
-
-                                if isTextFieldFocused {
-                                    Button {
-                                        isTextFieldFocused = false
-                                    } label: {
-                                        Image(systemName: "keyboard.chevron.compact.down")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
-                                }
-
-                                if !inputText.isEmpty {
-                                    Button {
-                                        inputText = ""
-                                        previousText = ""
-                                    } label: {
-                                        Image(systemName: "xmark.circle")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
-                                }
-                            }
-
-                            // Compact action buttons
-                            HStack(spacing: 8) {
-                                Button(action: sendText) {
-                                    Label("Send", systemImage: "paperplane.fill")
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(!bleManager.isConnected || inputText.isEmpty)
-
-                                Button(action: sendTestText) {
-                                    Text("Test")
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                                .disabled(!bleManager.isConnected)
-
-                                Spacer()
-                            }
-                        }
-
-                        // Mode toggles (compact)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Toggle(isOn: $buttonKeyboardMode) {
-                                Text("テキストフィールドなしモード（QWERTYボタン）")
-                            }
-
-                            if buttonKeyboardMode {
-                                DisclosureGroup("オプション") {
-                                    Toggle(isOn: $bleManager.immediateSendEnabled) {
-                                        Text("Immediate Send (per char)")
-                                    }
-                                    .tint(.blue)
-
-                                    if bleManager.immediateSendEnabled {
-                                        Toggle(isOn: $bleManager.immediateClearEnabled) {
-                                            Text("Immediate Clear (after send)")
-                                        }
-                                        .tint(.red)
-                                    }
-
-                                    Toggle(isOn: $bleManager.unicodeModeEnabled) {
-                                        Text("Unicode Mode (U+XXXX)")
-                                    }
-                                    .tint(.purple)
-
-                                    Text("IME変換中は即時送信をオフ推奨")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            } else {
-                                Toggle(isOn: $bleManager.immediateSendEnabled) {
-                                    Text("Immediate Send (per char)")
-                                }
-                                .tint(.blue)
-
-                                if bleManager.immediateSendEnabled {
-                                    Toggle(isOn: $bleManager.immediateClearEnabled) {
-                                        Text("Immediate Clear (after send)")
-                                    }
-                                    .tint(.red)
-                                }
-
-                                Toggle(isOn: $bleManager.unicodeModeEnabled) {
-                                    Text("Unicode Mode (U+XXXX)")
-                                }
-                                .tint(.purple)
-
-                                Text("IME変換中は即時送信をオフ推奨")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-
+                connectionStatus
+                mainContent
                 Spacer()
-
-                // 画面下部のボタンキーボードは safeAreaInset によって表示
             }
-            .padding(.bottom, 8) // Moved padding onto the outer VStack so it applies to a concrete View
+            .padding(.bottom, 8)
             .navigationBarHidden(true)
         }
-        // Keyboard toolbar with a close button
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button {
-                    isTextFieldFocused = false
-                } label: {
-                    Label("キーボードを閉じる", systemImage: "keyboard.chevron.compact.down")
-                }
-            }
-        }
+        .toolbar { keyboardToolbar }
         .sheet(isPresented: $showDeviceList) {
             DeviceListView(bleManager: bleManager, isPresented: $showDeviceList)
         }
         .safeAreaInset(edge: .bottom) {
-            if buttonKeyboardMode, let layout = parsedLayout {
-                VStack(spacing: 8) {
-                    ForEach(0..<layout.rows.count, id: \.self) { r in
-                        let row = layout.rows[r]
-                        KeyboardRowView(row: row) { tapped in
-                            handleLayoutKeyTap(label: tapped)
-                        }
+            if selectedMode == .keyboard, let layout = parsedLayout {
+                keyboardInset(layout: layout)
+            }
+        }
+        .onAppear { handleOnAppear() }
+        .onChange(of: selectedMode) { newMode in
+            handleModeChange(newMode)
+        }
+    }
+
+    private var connectionStatus: some View {
+        HStack {
+            Circle()
+                .fill(bleManager.isConnected ? Color.green : Color.red)
+                .frame(width: 10, height: 10)
+
+            Text(bleManager.statusMessage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            if bleManager.isConnected {
+                Button("Disconnect") {
+                    bleManager.disconnect()
+                }
+                .font(.caption)
+            } else {
+                Button("Connect") {
+                    showDeviceList = true
+                }
+                .font(.caption)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: selectedMode == .keyboard ? 8 : 12) {
+            Text("EasyKeyboard")
+                .font(selectedMode == .keyboard ? .subheadline : .title3)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("モード", selection: $selectedMode) {
+                    ForEach(InputMode.allCases) { mode in
+                        Label(mode.label, systemImage: mode.systemImage)
+                            .tag(mode)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
+                .pickerStyle(.menu)
+
+                modeSpecificContent
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    @ViewBuilder
+    private var modeSpecificContent: some View {
+        switch selectedMode {
+        case .text:
+            textInputSection
+        case .keyboard:
+            keyboardSection
+        case .mouse:
+            mouseSection
+        }
+    }
+
+    private var textInputSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("入力")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("ここに入力", text: $inputText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        bleManager.sendReturn()
+                        if bleManager.immediateClearEnabled {
+                            inputText = ""
+                            previousText = ""
+                        }
+                    }
+                    .onChange(of: inputText) { newValue in
+                        handleTextFieldChange(newValue)
+                    }
+
+                if isTextFieldFocused {
+                    Button {
+                        isTextFieldFocused = false
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+
+                if !inputText.isEmpty {
+                    Button {
+                        inputText = ""
+                        previousText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button(action: sendText) {
+                    Label("Send", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!bleManager.isConnected || inputText.isEmpty)
+
+                Button(action: sendTestText) {
+                    Text("Test")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(!bleManager.isConnected)
+
+                Spacer()
+            }
+
+            sharedOptionSection
+        }
+    }
+
+    private var keyboardSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("画面下部のQWERTYキーボードから即時入力できます")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            sharedOptionSection
+        }
+    }
+
+    private var sharedOptionSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $bleManager.immediateSendEnabled) {
+                Text("Immediate Send (per char)")
+            }
+            .tint(.blue)
+
+            if bleManager.immediateSendEnabled {
+                Toggle(isOn: $bleManager.immediateClearEnabled) {
+                    Text("Immediate Clear (after send)")
+                }
+                .tint(.red)
+            }
+
+            Toggle(isOn: $bleManager.unicodeModeEnabled) {
+                Text("Unicode Mode (U+XXXX)")
+            }
+            .tint(.purple)
+
+            Text("IME変換中は即時送信をオフ推奨")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var mouseSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("トラックパッドを使ってポインタを操作できます")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            TrackpadSurface(
+                sensitivity: trackpadSensitivity,
+                tapToClick: tapToClickEnabled,
+                onMove: { dx, dy in
+                    bleManager.sendMouseMove(dx: dx, dy: dy)
+                },
+                onLeftTap: {
+                    if tapToClickEnabled {
+                        bleManager.sendMouseClick(.left)
+                    }
+                },
+                onDoubleTap: {
+                    bleManager.sendMouseDoubleClick(.left)
+                },
+                onRightTap: {
+                    bleManager.sendMouseClick(.right)
+                }
+            )
+            .frame(height: 240)
+
+            HStack(spacing: 12) {
+                Button {
+                    bleManager.sendMouseClick(.left)
+                } label: {
+                    Label("左クリック", systemImage: "cursorarrow.click")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!bleManager.isConnected)
+
+                Button {
+                    bleManager.sendMouseClick(.right)
+                } label: {
+                    Label("右クリック", systemImage: "cursorarrow.rays")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!bleManager.isConnected)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("カーソル速度")
+                    Slider(value: $trackpadSensitivity, in: 0.4...2.5, step: 0.1)
+                }
+
+                Toggle(isOn: $tapToClickEnabled) {
+                    Text("タップで左クリック")
+                }
             }
         }
-        .onAppear {
-            // Request focus on text field when view appears
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    }
+
+    private var keyboardToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button {
+                isTextFieldFocused = false
+            } label: {
+                Label("キーボードを閉じる", systemImage: "keyboard.chevron.compact.down")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func keyboardInset(layout: ParsedKeyboardLayout) -> some View {
+        VStack(spacing: 8) {
+            ForEach(0..<layout.rows.count, id: \.self) { index in
+                let row = layout.rows[index]
+                KeyboardRowView(row: row) { tapped in
+                    handleLayoutKeyTap(label: tapped)
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    private func handleOnAppear() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if selectedMode == .text {
                 isTextFieldFocused = true
             }
-            if parsedLayout == nil {
-                parsedLayout = KeyboardLayoutLoader.loadFromBundle()
+        }
+        if parsedLayout == nil {
+            parsedLayout = KeyboardLayoutLoader.loadFromBundle()
+        }
+    }
+
+    private func handleModeChange(_ mode: InputMode) {
+        switch mode {
+        case .text:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                isTextFieldFocused = true
+            }
+        case .keyboard, .mouse:
+            isTextFieldFocused = false
+        }
+    }
+
+    private func handleTextFieldChange(_ newValue: String) {
+        if bleManager.immediateSendEnabled {
+            bleManager.sendDelta(old: previousText, new: newValue)
+
+            if bleManager.immediateClearEnabled, !newValue.isEmpty {
+                DispatchQueue.main.async {
+                    inputText = ""
+                    previousText = ""
+                }
+                return
             }
         }
+        previousText = newValue
     }
 
     private func sendText() {
@@ -244,28 +357,24 @@ struct ContentView: View {
             bleManager.sendText(inputText)
         }
 
-        // Clear text after sending
         inputText = ""
+        previousText = ""
 
-        // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
     }
 
     private func sendTestText() {
-        // 簡単な英語テスト文字列
         let testTexts = ["hello", "test", "abc", "123", "Hello World"]
         let randomTest = testTexts.randomElement() ?? "test"
 
         print("Sending test text: \(randomTest)")
         bleManager.sendText(randomTest)
 
-        // Haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
     }
 
-    // MARK: - Button Keyboard helpers
     private func handleLayoutKeyTap(label: String) {
         let output = keyOutput(from: label)
         switch output {
@@ -274,13 +383,15 @@ struct ContentView: View {
         case "__TAB__": bleManager.sendText("\t")
         case "__NOOP__": break
         default:
-            if bleManager.unicodeModeEnabled { bleManager.sendUnicode(output) }
-            else { bleManager.sendText(output) }
+            if bleManager.unicodeModeEnabled {
+                bleManager.sendUnicode(output)
+            } else {
+                bleManager.sendText(output)
+            }
         }
     }
 
     private func keyOutput(from label: String) -> String {
-        // Special named keys
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         switch name {
         case "Backspace": return "__BACKSPACE__"
@@ -290,12 +401,10 @@ struct ContentView: View {
         default: break
         }
 
-        // Split legends like "~\n`" -> pick lower legend by default
         let parts = name.components(separatedBy: "\n")
         let chosen = parts.last ?? name
-        if chosen.isEmpty { return " " } // space bar
+        if chosen.isEmpty { return " " }
 
-        // Prefer lowercase for letters (no modifier support yet)
         if chosen.count == 1, let scalar = chosen.unicodeScalars.first, CharacterSet.letters.contains(scalar) {
             return chosen.lowercased()
         }
@@ -303,7 +412,94 @@ struct ContentView: View {
     }
 }
 
-// View that lays out a row of keys based on widths
+struct TrackpadSurface: View {
+    let sensitivity: Double
+    let tapToClick: Bool
+    let onMove: (Int, Int) -> Void
+    let onLeftTap: () -> Void
+    let onDoubleTap: () -> Void
+    let onRightTap: () -> Void
+
+    @State private var previousTranslation: CGSize = .zero
+    @State private var accumulator: CGSize = .zero
+    @State private var isTracking = false
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                isTracking = true
+                let delta = CGSize(
+                    width: value.translation.width - previousTranslation.width,
+                    height: value.translation.height - previousTranslation.height
+                )
+                previousTranslation = value.translation
+                accumulate(delta: delta)
+            }
+            .onEnded { _ in
+                isTracking = false
+                previousTranslation = .zero
+                accumulator = .zero
+            }
+    }
+
+    private var tapGestures: some Gesture {
+        let doubleTap = TapGesture(count: 2).onEnded {
+            onDoubleTap()
+        }
+        let singleTap = TapGesture(count: 1).onEnded {
+            if tapToClick {
+                onLeftTap()
+            }
+        }
+        return doubleTap.exclusively(before: singleTap)
+    }
+
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+            onRightTap()
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(UIColor.systemGray5))
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: 1.5)
+            VStack(spacing: 12) {
+                Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 34))
+                    .foregroundColor(.secondary)
+                Text("ドラッグで移動 / ダブルタップでダブルクリック / 長押しで右クリック")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: isTracking)
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .gesture(dragGesture)
+        .highPriorityGesture(tapGestures)
+        .simultaneousGesture(longPressGesture)
+    }
+
+    private func accumulate(delta: CGSize) {
+        let scale = CGFloat(sensitivity)
+        accumulator.width += delta.width * scale
+        accumulator.height += delta.height * scale
+
+        let stepX = Int(accumulator.width.rounded(.towardZero))
+        let stepY = Int(accumulator.height.rounded(.towardZero))
+
+        if stepX != 0 || stepY != 0 {
+            onMove(stepX, stepY)
+            accumulator.width -= CGFloat(stepX)
+            accumulator.height -= CGFloat(stepY)
+        }
+    }
+}
+
 struct KeyboardRowView: View {
     let row: [KeyModel]
     var tap: (String) -> Void
@@ -328,7 +524,6 @@ struct KeyboardRowView: View {
     }
 }
 
-// Device List View for BLE device selection
 struct DeviceListView: View {
     @ObservedObject var bleManager: BLEManager
     @Binding var isPresented: Bool

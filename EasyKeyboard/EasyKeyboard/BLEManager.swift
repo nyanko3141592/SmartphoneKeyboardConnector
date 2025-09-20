@@ -24,6 +24,12 @@ class BLEManager: NSObject, ObservableObject {
     @Published var unicodeModeEnabled = false
     @Published var immediateClearEnabled = false
 
+    enum MouseButton: String {
+        case left = "LEFT"
+        case right = "RIGHT"
+        case middle = "MIDDLE"
+    }
+
     private var centralManager: CBCentralManager!
     private var textCharacteristic: CBCharacteristic?
     private var statusCharacteristic: CBCharacteristic?
@@ -131,6 +137,33 @@ class BLEManager: NSObject, ObservableObject {
         }
 
         logger.info("Text send attempt completed")
+    }
+
+    func sendMouseMove(dx: Int, dy: Int) {
+        guard isConnected else { return }
+        guard dx != 0 || dy != 0 else { return }
+        sendMouseCommand("MOVE:\(dx):\(dy)")
+    }
+
+    func sendMouseClick(_ button: MouseButton) {
+        guard isConnected else { return }
+        sendMouseCommand("CLICK:\(button.rawValue)")
+    }
+
+    func sendMouseDoubleClick(_ button: MouseButton) {
+        guard isConnected else { return }
+        sendMouseCommand("DOUBLE:\(button.rawValue)")
+    }
+
+    func sendMouseScroll(dy: Int) {
+        guard isConnected else { return }
+        guard dy != 0 else { return }
+        sendMouseCommand("SCROLL:\(dy)")
+    }
+
+    private func sendMouseCommand(_ command: String) {
+        let payload = "CMD:MOUSE:\(command)"
+        sendText(payload)
     }
 
     // MARK: - Immediate send helpers
