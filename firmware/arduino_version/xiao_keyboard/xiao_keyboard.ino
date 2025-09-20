@@ -137,6 +137,8 @@ void sendSimpleKey(char c) {
 
     uint8_t keycode = 0;
     uint8_t modifier = 0;
+    bool handled = true;
+
     if (c >= 'a' && c <= 'z') {
         keycode = 0x04 + (c - 'a');
     } else if (c >= 'A' && c <= 'Z') {
@@ -146,15 +148,31 @@ void sendSimpleKey(char c) {
         keycode = 0x1E + (c - '1');
     } else if (c == '0') {
         keycode = 0x27;
-    } else if (c == ' ') {
-        keycode = 0x2C;
-    } else if (c == '\n' || c == '\r') {
-        keycode = 0x28;
-    } else if (c == '.') {
-        keycode = 0x37;
-    } else if (c == ',') {
-        keycode = 0x36;
     } else {
+        switch (c) {
+            case ' ': keycode = 0x2C; break;
+            case '\n':
+            case '\r': keycode = 0x28; break;
+            case '\b': keycode = 0x2A; break; // Backspace
+            case '\t': keycode = 0x2B; break; // Tab
+            case '-': keycode = 0x2D; break;
+            case '=': keycode = 0x2E; break;
+            case '[': keycode = 0x2F; break;
+            case ']': keycode = 0x30; break;
+            case '\\': keycode = 0x31; break;
+            case ';': keycode = 0x33; break;
+            case '\'': keycode = 0x34; break;
+            case '`': keycode = 0x35; break;
+            case ',': keycode = 0x36; break;
+            case '.': keycode = 0x37; break;
+            case '/': keycode = 0x38; break;
+            default:
+                handled = false;
+                break;
+        }
+    }
+
+    if (!handled || keycode == 0) {
         return;
     }
 
