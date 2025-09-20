@@ -162,7 +162,7 @@ class BLEManager: NSObject, ObservableObject {
     }
 
     private func sendMouseCommand(_ command: String) {
-        let payload = "CMD:MOUSE:\(command)"
+        let payload = "CMD:MOUSE:\(command)\n"
         sendText(payload)
     }
 

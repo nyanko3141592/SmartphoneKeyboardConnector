@@ -39,6 +39,11 @@ volatile bool hasNewText = false;
 // Connection status
 bool bleConnected = false;
 
+// Command assembly state for multi-packet BLE messages
+static char commandBuffer[TEXT_BUFFER_SIZE];
+static size_t commandLength = 0;
+static bool collectingCommand = false;
+
 void handleCommand(const char* command);
 void handleMouseCommand(char* payload);
 uint8_t mouseButtonMaskFromString(const char* token);
@@ -301,16 +306,43 @@ void ble_uart_rx_callback(uint16_t conn_handle) {
     char data[TEXT_BUFFER_SIZE];
     uint16_t len = bleuart.read(data, TEXT_BUFFER_SIZE - 1);
 
-    if (len > 0) {
-        data[len] = '\0';
-        if (strncmp(data, "CMD:", 4) == 0) {
-            handleCommand(data + 4);
-            return;
+    if (len == 0) {
+        return;
+    }
+
+    for (uint16_t idx = 0; idx < len; idx++) {
+        char c = data[idx];
+
+        if (collectingCommand) {
+            if (c == '\n' || c == '\r') {
+                commandBuffer[commandLength] = '\0';
+                handleCommand(commandBuffer);
+                commandLength = 0;
+                collectingCommand = false;
+            } else if (commandLength < TEXT_BUFFER_SIZE - 1) {
+                commandBuffer[commandLength++] = c;
+            }
+            continue;
         }
+
+        if (c == 'C' && idx + 3 < len &&
+            data[idx + 1] == 'M' && data[idx + 2] == 'D' && data[idx + 3] == ':') {
+            collectingCommand = true;
+            commandLength = 0;
+            idx += 3; // Skip over "CMD"; for-loop increment skips ':'
+            continue;
+        }
+
+        // Treat remaining data as keyboard text input
         if (!hasNewText) {
-            strncpy(textBuffer, data, TEXT_BUFFER_SIZE - 1);
-            textBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
+            size_t remaining = len - idx;
+            if (remaining >= TEXT_BUFFER_SIZE) {
+                remaining = TEXT_BUFFER_SIZE - 1;
+            }
+            memcpy(textBuffer, &data[idx], remaining);
+            textBuffer[remaining] = '\0';
             hasNewText = true;
         }
+        break;
     }
 }
