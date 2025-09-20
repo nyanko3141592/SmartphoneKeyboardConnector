@@ -40,8 +40,19 @@ struct ParsedKeyboardLayout {
 }
 
 enum KeyboardLayoutLoader {
-    static func loadFromBundle() -> ParsedKeyboardLayout? {
-        guard let url = Bundle.main.url(forResource: "keyboard-layout", withExtension: "json") else {
+    static func loadFromBundle(isMobile: Bool = false) -> ParsedKeyboardLayout? {
+        let fileName = isMobile ? "keyboard-layout-mobile" : "keyboard-layout"
+        guard let url = Bundle.main.url(forResource: fileName, withExtension: "json") else {
+            // フォールバックとして通常のレイアウトを試す
+            if isMobile, let fallbackUrl = Bundle.main.url(forResource: "keyboard-layout", withExtension: "json") {
+                do {
+                    let data = try Data(contentsOf: fallbackUrl)
+                    return try parse(data: data)
+                } catch {
+                    print("Keyboard layout load error: \(error)")
+                    return nil
+                }
+            }
             return nil
         }
         do {
@@ -83,27 +94,34 @@ struct KeyButton: View {
     let model: KeyModel
     let unitWidth: CGFloat
     let height: CGFloat
+    var isMobile: Bool = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 // Full rectangular hit area
-                Rectangle()
+                RoundedRectangle(cornerRadius: isMobile ? 6 : 4)
                     .fill(Color(UIColor.secondarySystemBackground))
-                Rectangle()
-                    .stroke(Color.gray.opacity(0.4), lineWidth: 1)
-                VStack(spacing: 2) {
+                RoundedRectangle(cornerRadius: isMobile ? 6 : 4)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                VStack(spacing: 0) {
                     let parts = model.label.components(separatedBy: "\n")
                     if parts.count > 1 {
-                        Text(parts[0]).font(.footnote)
-                        Text(parts.last ?? "").font(.subheadline)
+                        Text(parts[0])
+                            .font(isMobile ? .system(size: 11) : .footnote)
+                            .foregroundColor(.secondary)
+                        Text(parts.last ?? "")
+                            .font(isMobile ? .system(size: 17, weight: .medium) : .subheadline)
                     } else {
-                        Text(model.label).font(.subheadline)
+                        let isSpecialKey = ["Backspace", "Enter", "Shift", "Tab", "Ctrl", "Alt", "Cmd", "Esc", "Caps"].contains(model.label)
+                        Text(model.label)
+                            .font(isMobile ? (isSpecialKey ? .system(size: 12, weight: .medium) : .system(size: 20, weight: .semibold)) : .subheadline)
+                            .fontWeight(isMobile && model.label.count == 1 ? .bold : .regular)
                     }
                 }
                 .foregroundColor(.primary)
-                .padding(4)
+                .padding(isMobile ? 2 : 4)
             }
         }
         .buttonStyle(.plain)

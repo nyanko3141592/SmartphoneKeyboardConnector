@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var showDeviceList = false
     @FocusState private var isTextFieldFocused: Bool
     @State private var parsedLayout: ParsedKeyboardLayout?
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @State private var selectedMode: InputMode = .text
     @State private var trackpadSensitivity: Double = 1.4
     @State private var tapToClickEnabled = true
@@ -250,60 +251,87 @@ struct ContentView: View {
     }
 
     private var mouseSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("トラックパッドを使ってポインタを操作できます")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            TrackpadSurface(
-                sensitivity: trackpadSensitivity,
-                tapToClick: tapToClickEnabled,
-                onMove: { dx, dy in
-                    bleManager.sendMouseMove(dx: dx, dy: dy)
-                },
-                onLeftTap: {
-                    if tapToClickEnabled {
-                        bleManager.sendMouseClick(.left)
-                    }
-                },
-                onDoubleTap: {
-                    bleManager.sendMouseDoubleClick(.left)
-                },
-                onRightTap: {
-                    bleManager.sendMouseClick(.right)
-                }
-            )
-            .frame(height: 240)
-
-            HStack(spacing: 12) {
-                Button {
-                    bleManager.sendMouseClick(.left)
-                } label: {
-                    Label("左クリック", systemImage: "cursorarrow.click")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!bleManager.isConnected)
-
-                Button {
-                    bleManager.sendMouseClick(.right)
-                } label: {
-                    Label("右クリック", systemImage: "cursorarrow.rays")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!bleManager.isConnected)
-
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 0) {
+            // 上部の余白と設定エリア
+            VStack(spacing: 8) {
                 HStack {
                     Text("カーソル速度")
+                        .font(.caption)
                     Slider(value: $trackpadSensitivity, in: 0.4...2.5, step: 0.1)
+                    Text(String(format: "%.1fx", trackpadSensitivity))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 35)
                 }
 
                 Toggle(isOn: $tapToClickEnabled) {
                     Text("タップで左クリック")
+                        .font(.caption)
                 }
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+
+            Spacer()
+
+            // 下部に集中した操作エリア
+            VStack(spacing: 12) {
+                // トラックパッド
+                TrackpadSurface(
+                    sensitivity: trackpadSensitivity,
+                    tapToClick: tapToClickEnabled,
+                    onMove: { dx, dy in
+                        bleManager.sendMouseMove(dx: dx, dy: dy)
+                    },
+                    onLeftTap: {
+                        if tapToClickEnabled {
+                            bleManager.sendMouseClick(.left)
+                        }
+                    },
+                    onDoubleTap: {
+                        bleManager.sendMouseDoubleClick(.left)
+                    },
+                    onRightTap: {
+                        bleManager.sendMouseClick(.right)
+                    }
+                )
+                .frame(maxHeight: 300)
+                .padding(.horizontal)
+
+                // クリックボタン
+                HStack(spacing: 16) {
+                    Button {
+                        bleManager.sendMouseClick(.left)
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "cursorarrow.click")
+                                .font(.title2)
+                            Text("左クリック")
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!bleManager.isConnected)
+
+                    Button {
+                        bleManager.sendMouseClick(.right)
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "cursorarrow.rays")
+                                .font(.title2)
+                            Text("右クリック")
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!bleManager.isConnected)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
             }
         }
     }
@@ -321,16 +349,17 @@ struct ContentView: View {
 
     @ViewBuilder
     private func keyboardInset(layout: ParsedKeyboardLayout) -> some View {
-        VStack(spacing: 8) {
+        let isMobile = horizontalSizeClass == .compact
+        VStack(spacing: isMobile ? 3 : 8) {
             ForEach(0..<layout.rows.count, id: \.self) { index in
                 let row = layout.rows[index]
-                KeyboardRowView(row: row) { tapped in
+                KeyboardRowView(row: row, isMobile: isMobile) { tapped in
                     handleLayoutKeyTap(label: tapped)
                 }
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isMobile ? 6 : 16)
+        .padding(.vertical, isMobile ? 8 : 8)
         .background(.ultraThinMaterial)
     }
 
@@ -341,7 +370,8 @@ struct ContentView: View {
             }
         }
         if parsedLayout == nil {
-            parsedLayout = KeyboardLayoutLoader.loadFromBundle()
+            let isMobile = horizontalSizeClass == .compact
+            parsedLayout = KeyboardLayoutLoader.loadFromBundle(isMobile: isMobile)
         }
     }
 
@@ -419,7 +449,7 @@ struct ContentView: View {
         case "Backspace": return "__BACKSPACE__"
         case "Enter", "Return": return "__ENTER__"
         case "Tab": return "__TAB__"
-        case "Caps Lock", "Shift", "Ctrl", "Win", "Alt", "Menu": return "__NOOP__"
+        case "Caps Lock", "Caps", "Shift", "Ctrl", "Win", "Cmd", "Alt", "Menu", "Esc": return "__NOOP__"
         default: break
         }
 
@@ -484,23 +514,24 @@ struct TrackpadSurface: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.systemGray5))
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: 1.5)
-            VStack(spacing: 12) {
-                Image(systemName: "hand.point.up.left.fill")
-                    .font(.system(size: 34))
-                    .foregroundColor(.secondary)
-                Text("ドラッグで移動 / ダブルタップでダブルクリック / 長押しで右クリック")
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(UIColor.systemGray6))
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
+
+            if !isTracking {
+                VStack(spacing: 8) {
+                    Image(systemName: "hand.point.up.left")
+                        .font(.system(size: 28))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("トラックパッド")
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.5))
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isTracking)
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .animation(.easeInOut(duration: 0.15), value: isTracking)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .gesture(dragGesture)
         .highPriorityGesture(tapGestures)
         .simultaneousGesture(longPressGesture)
@@ -524,25 +555,27 @@ struct TrackpadSurface: View {
 
 struct KeyboardRowView: View {
     let row: [KeyModel]
+    var isMobile: Bool = false
     var tap: (String) -> Void
 
     private func totalUnits() -> Double { row.reduce(0) { $0 + $1.width } }
 
     var body: some View {
         GeometryReader { geo in
-            let spacing: CGFloat = 4
+            let spacing: CGFloat = isMobile ? 3 : 4
             let units = totalUnits()
             let available = geo.size.width - spacing * CGFloat(max(0, row.count - 1))
             let unitWidth = max(0, available / CGFloat(units))
+            let keyHeight: CGFloat = isMobile ? 46 : 48
             HStack(spacing: spacing) {
                 ForEach(row) { key in
-                    KeyButton(model: key, unitWidth: unitWidth, height: 48) {
+                    KeyButton(model: key, unitWidth: unitWidth, height: keyHeight, isMobile: isMobile) {
                         tap(key.label)
                     }
                 }
             }
         }
-        .frame(height: 48)
+        .frame(height: isMobile ? 46 : 48)
     }
 }
 
