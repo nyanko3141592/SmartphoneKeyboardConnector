@@ -47,6 +47,7 @@ struct ContentView: View {
         NavigationView {
             VStack(spacing: 12) {
                 mainContent
+                    .padding(.top, 35) // topBarの下に適切なマージンを追加
                 if selectedMode != .keyboard {
                     Spacer()
                 }
