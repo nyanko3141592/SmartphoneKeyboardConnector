@@ -10,7 +10,6 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
     @State private var inputText = ""
-    @State private var previousText = ""
     @State private var showDeviceList = false
     @FocusState private var isTextFieldFocused: Bool
     @State private var parsedLayout: ParsedKeyboardLayout?
@@ -165,15 +164,9 @@ struct ContentView: View {
                 TextField("ここに入力", text: $inputText)
                     .textFieldStyle(.roundedBorder)
                     .focused($isTextFieldFocused)
+                    .submitLabel(.send)
                     .onSubmit {
-                        bleManager.sendReturn()
-                        if bleManager.immediateClearEnabled {
-                            inputText = ""
-                            previousText = ""
-                        }
-                    }
-                    .onChange(of: inputText) { newValue in
-                        handleTextFieldChange(newValue)
+                        commitText()
                     }
 
                 if isTextFieldFocused {
@@ -189,7 +182,6 @@ struct ContentView: View {
                 if !inputText.isEmpty {
                     Button {
                         inputText = ""
-                        previousText = ""
                     } label: {
                         Image(systemName: "xmark.circle")
                     }
@@ -197,9 +189,8 @@ struct ContentView: View {
                     .controlSize(.mini)
                 }
             }
-
             HStack(spacing: 8) {
-                Button(action: sendText) {
+                Button(action: commitText) {
                     Label("Send", systemImage: "paperplane.fill")
                 }
                 .buttonStyle(.bordered)
@@ -215,8 +206,6 @@ struct ContentView: View {
 
                 Spacer()
             }
-
-            sharedOptionSection
         }
     }
 
@@ -224,31 +213,6 @@ struct ContentView: View {
         VStack(spacing: 10) {
             Text("キーボードモード")
                 .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private var sharedOptionSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle(isOn: $bleManager.immediateSendEnabled) {
-                Text("Immediate Send (per char)")
-            }
-            .tint(.blue)
-
-            if bleManager.immediateSendEnabled {
-                Toggle(isOn: $bleManager.immediateClearEnabled) {
-                    Text("Immediate Clear (after send)")
-                }
-                .tint(.red)
-            }
-
-            Toggle(isOn: $bleManager.unicodeModeEnabled) {
-                Text("Unicode Mode (U+XXXX)")
-            }
-            .tint(.purple)
-
-            Text("IME変換中は即時送信をオフ推奨")
-                .font(.caption2)
                 .foregroundColor(.secondary)
         }
     }
@@ -410,31 +374,13 @@ struct ContentView: View {
         }
     }
 
-    private func handleTextFieldChange(_ newValue: String) {
-        if bleManager.immediateSendEnabled {
-            bleManager.sendDelta(old: previousText, new: newValue)
+    private func commitText() {
+        let text = inputText
+        guard !text.isEmpty else { return }
 
-            if bleManager.immediateClearEnabled, !newValue.isEmpty {
-                DispatchQueue.main.async {
-                    inputText = ""
-                    previousText = ""
-                }
-                return
-            }
-        }
-        previousText = newValue
-    }
-
-    private func sendText() {
-        guard !inputText.isEmpty else { return }
-        if bleManager.unicodeModeEnabled {
-            bleManager.sendUnicode(inputText)
-        } else {
-            bleManager.sendText(inputText)
-        }
+        bleManager.sendUnicode(text)
 
         inputText = ""
-        previousText = ""
 
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
@@ -445,7 +391,7 @@ struct ContentView: View {
         let randomTest = testTexts.randomElement() ?? "test"
 
         print("Sending test text: \(randomTest)")
-        bleManager.sendText(randomTest)
+        bleManager.sendUnicode(randomTest)
 
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
@@ -459,11 +405,7 @@ struct ContentView: View {
         case "__TAB__": bleManager.sendText("\t")
         case "__NOOP__": break
         default:
-            if bleManager.unicodeModeEnabled {
-                bleManager.sendUnicode(output)
-            } else {
-                bleManager.sendText(output)
-            }
+            bleManager.sendUnicode(output)
         }
     }
 

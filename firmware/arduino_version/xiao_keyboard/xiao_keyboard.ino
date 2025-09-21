@@ -78,9 +78,14 @@ void setup() {
 
 void loop() {
     if (hasNewText) {
+        char sendBuffer[TEXT_BUFFER_SIZE];
+        strncpy(sendBuffer, textBuffer, TEXT_BUFFER_SIZE - 1);
+        sendBuffer[TEXT_BUFFER_SIZE - 1] = '\0';
+
         hasNewText = false;
-        sendSimpleText(textBuffer);
         memset(textBuffer, 0, TEXT_BUFFER_SIZE);
+
+        sendSimpleText(sendBuffer);
     }
     delay(2);
 }
@@ -178,6 +183,14 @@ void sendSimpleKey(char c) {
             case '\t': keycode = 0x2B; break; // Tab
             case '-': keycode = 0x2D; break;
             case '=': keycode = 0x2E; break;
+            case '+':
+#ifdef JP_KEYBOARD
+                keycode = 0x33; // ';' key with Shift produces '+' on JIS layout
+#else
+                keycode = 0x2E; // '=' key with Shift produces '+' on US layout
+#endif
+                modifier = 0x02; // Shift
+                break;
             case '[': keycode = 0x2F; break;
             case ']': keycode = 0x30; break;
             case '\\': keycode = 0x31; break;

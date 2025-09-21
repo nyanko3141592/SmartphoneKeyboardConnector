@@ -19,11 +19,6 @@ class BLEManager: NSObject, ObservableObject {
     @Published var connectedDevice: CBPeripheral?
     @Published var statusMessage = "Not connected"
 
-    // Modes
-    @Published var immediateSendEnabled = false
-    @Published var unicodeModeEnabled = false
-    @Published var immediateClearEnabled = false
-
     enum MouseButton: String {
         case left = "LEFT"
         case right = "RIGHT"
@@ -33,6 +28,9 @@ class BLEManager: NSObject, ObservableObject {
     private var centralManager: CBCentralManager!
     private var textCharacteristic: CBCharacteristic?
     private var statusCharacteristic: CBCharacteristic?
+    private let unicodeSendQueue = DispatchQueue(label: "com.easykeyboard.unicodeSendQueue")
+    private var unicodeNextSendTime = DispatchTime.now()
+    private let unicodeSendInterval = DispatchTimeInterval.milliseconds(200)
 
     // MARK: - Service and Characteristic UUIDs
     // Nordic UART Service (NUS) - ファームウェアと一致させる
@@ -166,40 +164,6 @@ class BLEManager: NSObject, ObservableObject {
         sendText(payload)
     }
 
-    // MARK: - Immediate send helpers
-
-    /// Send only appended content from oldText -> newText.
-    /// If text was shortened (deletion), this does nothing.
-    func sendDelta(old oldText: String, new newText: String) {
-        guard isConnected else { return }
-
-        let oldChars = Array(oldText)
-        let newChars = Array(newText)
-
-        // 1) 削除（Backspace）判定
-        if newChars.count < oldChars.count {
-            let diff = oldChars.count - newChars.count
-            sendBackspace(diff)
-            return
-        }
-
-        // 2) 追加文字（または置換による末尾以外の挿入）
-        var i = 0
-        while i < oldChars.count && i < newChars.count && oldChars[i] == newChars[i] {
-            i += 1
-        }
-
-        let appended = newChars.suffix(newChars.count - i)
-        guard !appended.isEmpty else { return }
-
-        let appendedString = String(appended)
-        if unicodeModeEnabled {
-            sendUnicode(appendedString)
-        } else {
-            sendText(appendedString)
-        }
-    }
-
     /// Backspace キーイベント相当（ASCII BS 0x08）を複数回送信
     func sendBackspace(_ count: Int = 1) {
         guard count > 0 else { return }
@@ -213,14 +177,30 @@ class BLEManager: NSObject, ObservableObject {
         sendText("\n")
     }
 
-    /// Send text as Unicode code points (hex), for firmware that expects explicit code points.
-    /// Format: "U+XXXX" tokens separated by spaces. Example: "A あ" -> "U+0041 U+3042".
+    /// Send text as Unicode code points (hex), expanding each one into
+    /// the key sequence expected by the firmware: `Shift+U`, `+`, the
+    /// four-digit hex value, two spaces, Enter, then a short delay.
     func sendUnicode(_ text: String) {
-        let scalars = text.unicodeScalars.map { scalar in
-            String(format: "U+%04X", scalar.value)
+        guard isConnected else { return }
+        guard !text.isEmpty else { return }
+
+        let sequences = text.unicodeScalars.map { scalar in
+            String(format: "U+%04X  \n", scalar.value)
         }
-        let payload = scalars.joined(separator: " ")
-        sendText(payload)
+
+        unicodeSendQueue.async { [weak self] in
+            guard let self = self else { return }
+
+            var deadline = max(self.unicodeNextSendTime, DispatchTime.now())
+            for sequence in sequences {
+                DispatchQueue.main.asyncAfter(deadline: deadline) { [weak self] in
+                    self?.sendText(sequence)
+                }
+                deadline = deadline + self.unicodeSendInterval
+            }
+
+            self.unicodeNextSendTime = deadline
+        }
     }
 }
 
