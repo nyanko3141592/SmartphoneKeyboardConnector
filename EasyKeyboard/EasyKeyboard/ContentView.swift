@@ -70,7 +70,7 @@ struct ContentView: View {
             }
         }
         .onAppear { handleOnAppear() }
-        .onChange(of: selectedMode) { newMode in
+        .onChange(of: selectedMode) { _, newMode in
             handleModeChange(newMode)
         }
     }
@@ -244,25 +244,36 @@ struct ContentView: View {
             // 下部に集中した操作エリア
             VStack(spacing: 12) {
                 // トラックパッド
-                TrackpadSurface(
-                    sensitivity: trackpadSensitivity,
-                    tapToClick: tapToClickEnabled,
-                    onMove: { dx, dy in
-                        bleManager.sendMouseMove(dx: dx, dy: dy)
-                    },
-                    onLeftTap: {
-                        if tapToClickEnabled {
-                            bleManager.sendMouseClick(.left)
+                HStack(spacing: 12) {
+                    TrackpadSurface(
+                        sensitivity: trackpadSensitivity,
+                        tapToClick: tapToClickEnabled,
+                        onMove: { dx, dy in
+                            bleManager.sendMouseMove(dx: dx, dy: dy)
+                        },
+                        onLeftTap: {
+                            if tapToClickEnabled {
+                                bleManager.sendMouseClick(.left)
+                            }
+                        },
+                        onDoubleTap: {
+                            bleManager.sendMouseDoubleClick(.left)
+                        },
+                        onRightTap: {
+                            bleManager.sendMouseClick(.right)
                         }
-                    },
-                    onDoubleTap: {
-                        bleManager.sendMouseDoubleClick(.left)
-                    },
-                    onRightTap: {
-                        bleManager.sendMouseClick(.right)
-                    }
-                )
-                .frame(maxHeight: 300)
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: 300)
+
+                    ScrollStrip(
+                        sensitivity: trackpadSensitivity,
+                        onScroll: { delta in
+                            bleManager.sendMouseScroll(dy: delta)
+                        }
+                    )
+                    .frame(width: 52)
+                    .frame(maxWidth: nil, maxHeight: 300)
+                }
                 .padding(.horizontal)
 
                 // クリックボタン
@@ -324,6 +335,9 @@ struct ContentView: View {
                     sensitivity: trackpadSensitivity,
                     onMove: { dx, dy in
                         bleManager.sendMouseMove(dx: dx, dy: dy)
+                    },
+                    onScroll: { delta in
+                        bleManager.sendMouseScroll(dy: delta)
                     },
                     onLeftClick: {
                         bleManager.sendMouseClick(.left)
@@ -405,7 +419,7 @@ struct ContentView: View {
         case "__TAB__": bleManager.sendText("\t")
         case "__NOOP__": break
         default:
-            bleManager.sendUnicode(output)
+            bleManager.sendText(output)
         }
     }
 
@@ -519,9 +533,66 @@ struct TrackpadSurface: View {
     }
 }
 
+struct ScrollStrip: View {
+    let sensitivity: Double
+    let onScroll: (Int) -> Void
+
+    @State private var previousTranslation: CGFloat = 0
+    @State private var accumulator: CGFloat = 0
+    @State private var isDragging = false
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                isDragging = true
+                let delta = value.translation.height - previousTranslation
+                previousTranslation = value.translation.height
+                accumulate(delta: delta)
+            }
+            .onEnded { _ in
+                isDragging = false
+                previousTranslation = 0
+                accumulator = 0
+            }
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(UIColor.systemGray5))
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isDragging ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isDragging ? 2 : 1)
+
+            if !isDragging {
+                VStack(spacing: 6) {
+                    Image(systemName: "arrow.up")
+                    Image(systemName: "arrow.down")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.6))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isDragging)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .gesture(dragGesture)
+    }
+
+    private func accumulate(delta: CGFloat) {
+        let scale = CGFloat(sensitivity) * 0.7
+        accumulator += delta * scale
+
+        let step = Int(accumulator.rounded(.towardZero))
+        if step != 0 {
+            onScroll(step)
+            accumulator -= CGFloat(step)
+        }
+    }
+}
+
 struct CompactTrackpadView: View {
     let sensitivity: Double
     let onMove: (Int, Int) -> Void
+    let onScroll: (Int) -> Void
     let onLeftClick: () -> Void
     let onMiddleClick: () -> Void
     let onRightClick: () -> Void
@@ -550,16 +621,26 @@ struct CompactTrackpadView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            // トラックパッドエリア
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(UIColor.systemGray6))
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
+            // トラックパッドエリア + スクロールバー
+            HStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(UIColor.systemGray6))
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
+                }
+                .frame(minHeight: 100)
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .gesture(dragGesture)
+
+                ScrollStrip(
+                    sensitivity: sensitivity,
+                    onScroll: onScroll
+                )
+                .frame(width: 32)
+                .frame(maxWidth: nil, maxHeight: 100)
             }
             .frame(minHeight: 100)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-            .gesture(dragGesture)
 
             // クリックボタン
             HStack(spacing: 6) {
@@ -610,6 +691,7 @@ struct CompactTrackpadView: View {
             accumulator.height -= CGFloat(stepY)
         }
     }
+
 }
 
 struct KeyboardRowView: View {
