@@ -365,28 +365,7 @@ struct ContentView: View {
     private func keyboardInset(layout: ParsedKeyboardLayout) -> some View {
         let isMobile = horizontalSizeClass == .compact
         VStack(spacing: isMobile ? 3 : 8) {
-            // 縦型（compact）の場合のみトラックパッドを表示
-            if isMobile {
-                CompactTrackpadView(
-                    sensitivity: trackpadSensitivity,
-                    onMove: { dx, dy in
-                        bleManager.sendMouseMove(dx: dx, dy: dy)
-                    },
-                    onScroll: { delta in
-                        bleManager.sendMouseScroll(dy: delta)
-                    },
-                    onLeftClick: {
-                        bleManager.sendMouseClick(.left)
-                    },
-                    onMiddleClick: {
-                        bleManager.sendMouseClick(.middle)
-                    },
-                    onRightClick: {
-                        bleManager.sendMouseClick(.right)
-                    }
-                )
-                .padding(.bottom, 4)
-            }
+            trackpadSection(isMobile: isMobile)
 
             // キーボード行
             ForEach(0..<layout.rows.count, id: \.self) { index in
@@ -404,12 +383,41 @@ struct ContentView: View {
     @ViewBuilder
     private func flickKeyboardInset() -> some View {
         let isMobile = horizontalSizeClass == .compact
-        FlickKeyboardView(isCompact: isMobile) { entry, metadata in
-            handleFlickCommit(entry, metadata: metadata)
+        VStack(spacing: isMobile ? 6 : 10) {
+            trackpadSection(isMobile: isMobile)
+
+            FlickKeyboardView(isCompact: isMobile) { entry, metadata in
+                handleFlickCommit(entry, metadata: metadata)
+            }
         }
         .padding(.horizontal, isMobile ? 6 : 16)
         .padding(.vertical, isMobile ? 8 : 10)
         .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func trackpadSection(isMobile: Bool) -> some View {
+        if isMobile {
+            CompactTrackpadView(
+                sensitivity: trackpadSensitivity,
+                onMove: { dx, dy in
+                    bleManager.sendMouseMove(dx: dx, dy: dy)
+                },
+                onScroll: { delta in
+                    bleManager.sendMouseScroll(dy: delta)
+                },
+                onLeftClick: {
+                    bleManager.sendMouseClick(.left)
+                },
+                onMiddleClick: {
+                    bleManager.sendMouseClick(.middle)
+                },
+                onRightClick: {
+                    bleManager.sendMouseClick(.right)
+                }
+            )
+            .padding(.bottom, 4)
+        }
     }
 
     private func handleOnAppear() {
