@@ -614,24 +614,6 @@ struct TrackpadSurface: View {
     @State private var accumulator: CGSize = .zero
     @State private var isTracking = false
 
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                isTracking = true
-                let delta = CGSize(
-                    width: value.translation.width - previousTranslation.width,
-                    height: value.translation.height - previousTranslation.height
-                )
-                previousTranslation = value.translation
-                accumulate(delta: delta)
-            }
-            .onEnded { _ in
-                isTracking = false
-                previousTranslation = .zero
-                accumulator = .zero
-            }
-    }
-
     private var tapGestures: some Gesture {
         let doubleTap = TapGesture(count: 2).onEnded {
             onDoubleTap()
@@ -673,6 +655,24 @@ struct TrackpadSurface: View {
         .gesture(dragGesture)
         .highPriorityGesture(tapGestures)
         .simultaneousGesture(longPressGesture)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                isTracking = true
+                let delta = CGSize(
+                    width: value.translation.width - previousTranslation.width,
+                    height: value.translation.height - previousTranslation.height
+                )
+                previousTranslation = value.translation
+                accumulate(delta: delta)
+            }
+            .onEnded { _ in
+                isTracking = false
+                previousTranslation = .zero
+                accumulator = .zero
+            }
     }
 
     private func accumulate(delta: CGSize) {
@@ -755,41 +755,35 @@ struct CompactTrackpadView: View {
     let onMiddleClick: () -> Void
     let onRightClick: () -> Void
 
-    @State private var previousTranslation: CGSize = .zero
     @State private var accumulator: CGSize = .zero
     @State private var isTracking = false
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                isTracking = true
-                let delta = CGSize(
-                    width: value.translation.width - previousTranslation.width,
-                    height: value.translation.height - previousTranslation.height
-                )
-                previousTranslation = value.translation
-                accumulate(delta: delta)
-            }
-            .onEnded { _ in
-                isTracking = false
-                previousTranslation = .zero
-                accumulator = .zero
-            }
-    }
 
     var body: some View {
         VStack(spacing: 6) {
             // トラックパッドエリア + スクロールバー
             HStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(UIColor.systemGray6))
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
-                }
+                TrackpadSurfaceView(
+                    isTracking: $isTracking,
+                    onDelta: { delta in
+                        accumulate(delta: delta)
+                    },
+                    onEnd: {
+                        resetAccumulator()
+                    },
+                    onTap: { touches in
+                        switch touches {
+                        case 1:
+                            onLeftClick()
+                        case 2:
+                            onRightClick()
+                        case 3:
+                            onMiddleClick()
+                        default:
+                            break
+                        }
+                    }
+                )
                 .frame(minHeight: 100)
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-                .gesture(dragGesture)
 
                 ScrollStrip(
                     sensitivity: sensitivity,
@@ -850,6 +844,118 @@ struct CompactTrackpadView: View {
         }
     }
 
+    private func resetAccumulator() {
+        accumulator = .zero
+    }
+
+}
+
+private struct TrackpadSurfaceView: UIViewRepresentable {
+    @Binding var isTracking: Bool
+    var onDelta: (CGSize) -> Void
+    var onEnd: () -> Void
+    var onTap: (Int) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isTracking: $isTracking, onDelta: onDelta, onEnd: onEnd, onTap: onTap)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = UIColor.systemGray6
+        view.layer.cornerRadius = 8
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.gray.withAlphaComponent(0.3).cgColor
+
+        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        panGesture.maximumNumberOfTouches = 3
+        panGesture.delegate = context.coordinator
+        view.addGestureRecognizer(panGesture)
+
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap))
+        singleTap.numberOfTouchesRequired = 1
+        singleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(singleTap)
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap))
+        doubleTap.numberOfTouchesRequired = 2
+        doubleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(doubleTap)
+
+        let tripleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTripleTap))
+        tripleTap.numberOfTouchesRequired = 3
+        tripleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(tripleTap)
+
+        context.coordinator.updateBorder(for: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.updateBorder(for: uiView)
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        @Binding private var isTracking: Bool
+        private var onDelta: (CGSize) -> Void
+        private var onEnd: () -> Void
+        private var onTap: (Int) -> Void
+        private var previousTranslation: CGPoint = .zero
+
+        init(isTracking: Binding<Bool>, onDelta: @escaping (CGSize) -> Void, onEnd: @escaping () -> Void, onTap: @escaping (Int) -> Void) {
+            _isTracking = isTracking
+            self.onDelta = onDelta
+            self.onEnd = onEnd
+            self.onTap = onTap
+        }
+
+        func updateBorder(for view: UIView) {
+            view.layer.borderColor = (isTracking ? UIColor.systemBlue : UIColor.gray.withAlphaComponent(0.3)).cgColor
+            view.layer.borderWidth = isTracking ? 2 : 1
+        }
+
+        @objc func handlePan(_ sender: UIPanGestureRecognizer) {
+            switch sender.state {
+            case .began:
+                isTracking = true
+                previousTranslation = sender.translation(in: sender.view)
+                if let view = sender.view {
+                    updateBorder(for: view)
+                }
+            case .changed:
+                let translation = sender.translation(in: sender.view)
+                let delta = CGSize(width: translation.x - previousTranslation.x,
+                                   height: translation.y - previousTranslation.y)
+                previousTranslation = translation
+                onDelta(delta)
+            case .ended, .cancelled, .failed:
+                isTracking = false
+                previousTranslation = .zero
+                onEnd()
+                if let view = sender.view {
+                    updateBorder(for: view)
+                }
+            default:
+                break
+            }
+        }
+
+        @objc func handleSingleTap() {
+            onTap(1)
+        }
+
+        @objc func handleDoubleTap() {
+            onTap(2)
+        }
+
+        @objc func handleTripleTap() {
+            onTap(3)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
 }
 
 struct KeyboardRowView: View {
