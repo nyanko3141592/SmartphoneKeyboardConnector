@@ -1,10 +1,10 @@
 # SmartphoneKeyboardConnector
 
-スマートフォンから PC に Bluetooth でテキストを送信し、XIAO デバイス経由で USB キーボード入力として変換するシステム
+スマートフォンから PC に Bluetooth でテキストやマウス操作を送信し、XIAO デバイス経由で USB キーボード・マウス入力として変換するシステム
 
 ## 概要
 
-このプロジェクトは、スマートフォン（iOS）からのテキスト入力を Bluetooth Low Energy (BLE) で受信し、Seeed XIAO nRF52840 デバイスで USB HID キーボード信号に変換して PC に送信するシステムです。最新のファームウェアは Adafruit TinyUSB の公式 HID キーボード例に準拠した初期化で安定動作します。
+このプロジェクトは、スマートフォン（iOS）からのテキスト入力やマウス操作を Bluetooth Low Energy (BLE) で受信し、Seeed XIAO nRF52840 デバイスで USB HID キーボード・マウス信号に変換して PC に送信するシステムです。最新のファームウェアは Adafruit TinyUSB の公式 HID キーボード例に準拠した初期化で安定動作します。
 
 ## システム構成
 
@@ -76,10 +76,13 @@ open EasyKeyboard.xcodeproj
 
 ### 3. 接続・使用方法
 
-1. **Xiao を PC に USB 接続** - USB キーボードとして認識される
+1. **Xiao を PC に USB 接続** - USB キーボード・マウスとして認識される
 2. **iOS アプリ起動** - Bluetooth 権限を許可
-3. **BLE 接続** - "Connect"ボタンから"Xiao Keyboard"を選択
-4. **テキスト送信** - アプリでテキスト入力して"Send to PC"
+3. **BLE 接続** - 接続ボタンからデバイスを選択
+4. **機能選択**:
+   - **テキスト入力モード**: テキストフィールドに入力してSendボタンで送信
+   - **キーボードモード**: 画面下部の仮想キーボードでタイピング
+   - **マウスモード**: トラックパッドでカーソル操作、クリック、スクロール
 
 ## 技術仕様
 
@@ -87,20 +90,26 @@ open EasyKeyboard.xcodeproj
 
 - **フレームワーク**: SwiftUI, Core Bluetooth
 - **BLE サービス**: Nordic UART Service (6E400001-B5A3-F393-E0A9-E50E24DCCA9E)
-- **対応文字**: ASCII 英数字、基本記号
+- **入力モード**:
+  - テキスト入力（直接入力・音声入力）
+  - 仮想キーボード（文字、数字、特殊キー）
+  - マウス操作（トラックパッド、スクロール、クリック）
+- **対応文字**: ASCII 英数字、基本記号、Unicode文字
 
 ### Firmware
 
 - **開発環境**: Arduino IDE（Seeeduino nRF52 ボードパッケージ）
 - **ライブラリ**: Adafruit Bluefruit nRF52, Adafruit TinyUSB
-- **USB**: Boot Keyboard Protocol（HID）
+- **USB**: Boot Keyboard Protocol（HID）、マウスプロトコル（HID）
 - **初期化順**: HID 初期化 → USB マウント待ち → BLE 開始（Adafruit 例と同等）
 
 ## 開発状況
 
 - ✅ **BLE 通信**: iOS ↔ XIAO 完了
 - ✅ **USB 列挙**: nRF52840 TinyUSB ハング問題解決
-- ✅ **HID 入力**: 安定化（Adafruit 例と同等の初期化に統一）
+- ✅ **HID キーボード入力**: 安定化（Adafruit 例と同等の初期化に統一）
+- ✅ **HID マウス入力**: カーソル移動、クリック、スクロール対応
+- ✅ **iOS UI**: 3モード切り替え（テキスト入力、キーボード、マウス）
 
 詳細な開発履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
 
@@ -115,7 +124,7 @@ open EasyKeyboard.xcodeproj
 
 2. **USB HID が動作しない**
 
-   - macOS の「システム情報 > USB」で `HID Keyboard` が出るか確認
+   - macOS の「システム情報 > USB」で `HID Keyboard` と `HID Mouse` が出るか確認
    - 検証用 `hid_minimal` スケッチで HID 列挙を先に確認（A0〜A3 で矢印キー）
    - 列挙が不安定な場合はケーブル/ポートを変更、ハブ経由を避ける
 
