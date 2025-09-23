@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
@@ -17,10 +18,12 @@ struct ContentView: View {
     @State private var selectedMode: InputMode = .text
     @State private var trackpadSensitivity: Double = 1.4
     @State private var tapToClickEnabled = true
+    @State private var flickCommitHistory: FlickCommitHistory?
 
     enum InputMode: String, CaseIterable, Identifiable {
         case text
         case keyboard
+        case flick
         case mouse
 
         var id: String { rawValue }
@@ -29,6 +32,7 @@ struct ContentView: View {
             switch self {
             case .text: return "テキスト入力"
             case .keyboard: return "キーボード"
+            case .flick: return "フリック"
             case .mouse: return "マウス"
             }
         }
@@ -37,6 +41,7 @@ struct ContentView: View {
             switch self {
             case .text: return "character.cursor.ibeam"
             case .keyboard: return "keyboard"
+            case .flick: return "square.grid.3x3.fill"
             case .mouse: return "rectangle.and.hand.point.up.left"
             }
         }
@@ -65,8 +70,19 @@ struct ContentView: View {
             DeviceListView(bleManager: bleManager, isPresented: $showDeviceList)
         }
         .safeAreaInset(edge: .bottom) {
-            if selectedMode == .keyboard, let layout = parsedLayout {
-                keyboardInset(layout: layout)
+            Group {
+                switch selectedMode {
+                case .keyboard:
+                    if let layout = parsedLayout {
+                        keyboardInset(layout: layout)
+                    } else {
+                        EmptyView()
+                    }
+                case .flick:
+                    flickKeyboardInset()
+                default:
+                    EmptyView()
+                }
             }
         }
         .onAppear { handleOnAppear() }
@@ -149,6 +165,8 @@ struct ContentView: View {
             textInputSection
         case .keyboard:
             keyboardSection
+        case .flick:
+            flickSection
         case .mouse:
             mouseSection
         }
@@ -214,6 +232,24 @@ struct ContentView: View {
             Text("キーボードモード")
                 .font(.caption)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private var flickSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("フリックモード")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Text("下部のフリックキーボードからひらがなに対応するローマ字を送信します。中央タップで基本音、フリックで派生音/記号を選択できます。")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            if !bleManager.isConnected {
+                Text("デバイス未接続のため送信は保留されます。接続後に自動で反映されます。")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
         }
     }
 
@@ -365,6 +401,17 @@ struct ContentView: View {
         .background(.ultraThinMaterial)
     }
 
+    @ViewBuilder
+    private func flickKeyboardInset() -> some View {
+        let isMobile = horizontalSizeClass == .compact
+        FlickKeyboardView(isCompact: isMobile) { entry, metadata in
+            handleFlickCommit(entry, metadata: metadata)
+        }
+        .padding(.horizontal, isMobile ? 6 : 16)
+        .padding(.vertical, isMobile ? 8 : 10)
+        .background(.ultraThinMaterial)
+    }
+
     private func handleOnAppear() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if selectedMode == .text {
@@ -383,9 +430,11 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 isTextFieldFocused = true
             }
-        case .keyboard, .mouse:
+        case .keyboard, .flick, .mouse:
             isTextFieldFocused = false
         }
+
+        flickCommitHistory = nil
     }
 
     private func commitText() {
@@ -423,6 +472,88 @@ struct ContentView: View {
         }
     }
 
+    private func handleFlickCommit(_ entry: FlickEntry, metadata: FlickCommitMetadata?) {
+        var performed = false
+
+        switch entry.action {
+        case .sendText(let value):
+            bleManager.sendText(value)
+            if let metadata {
+                flickCommitHistory = FlickCommitHistory(model: metadata.model, direction: metadata.direction, entry: entry)
+            } else {
+                flickCommitHistory = nil
+            }
+            performed = true
+        case .enter:
+            bleManager.sendReturn()
+            flickCommitHistory = nil
+            performed = true
+        case .backspace:
+            bleManager.sendBackspace(1)
+            flickCommitHistory = nil
+            performed = true
+        case .tab:
+            bleManager.sendText("\t")
+            flickCommitHistory = nil
+            performed = true
+        case .space:
+            bleManager.sendText(" ")
+            flickCommitHistory = nil
+            performed = true
+        case .transformSmall:
+            performed = applySmallTransformation()
+        case .applyDakuten:
+            performed = applyDakutenTransformation()
+        case .applyHandakuten:
+            performed = applyHandakutenTransformation()
+        }
+
+        if performed {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private func applySmallTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.smallEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        bleManager.sendBackspace(1)
+        bleManager.sendText(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
+    private func applyDakutenTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.dakutenEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        bleManager.sendBackspace(1)
+        bleManager.sendText(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
+    private func applyHandakutenTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.handakutenEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        bleManager.sendBackspace(1)
+        bleManager.sendText(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
     private func keyOutput(from label: String) -> String {
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         switch name {
@@ -442,6 +573,12 @@ struct ContentView: View {
         }
         return chosen
     }
+}
+
+private struct FlickCommitHistory {
+    let model: FlickKeyModel
+    let direction: FlickDirection
+    var entry: FlickEntry
 }
 
 struct TrackpadSurface: View {
