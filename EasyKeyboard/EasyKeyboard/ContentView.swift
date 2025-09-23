@@ -225,7 +225,7 @@ struct ContentView: View {
                 Spacer()
             }
         }
-    }
+                }
 
     private var keyboardSection: some View {
         VStack(spacing: 10) {
@@ -506,6 +506,15 @@ struct ContentView: View {
             performed = applyDakutenTransformation()
         case .applyHandakuten:
             performed = applyHandakutenTransformation()
+        case .cursorLeft:
+            performed = bleManager.sendCursor(.left)
+            flickCommitHistory = nil
+        case .cursorRight:
+            performed = bleManager.sendCursor(.right)
+            flickCommitHistory = nil
+        case .undo:
+            performed = bleManager.sendUndo()
+            flickCommitHistory = nil
         }
 
         if performed {
@@ -520,8 +529,7 @@ struct ContentView: View {
         guard let replacement = history.model.smallEntry(for: history.direction) else { return false }
         guard case .sendText(let value) = replacement.action else { return false }
 
-        bleManager.sendBackspace(1)
-        bleManager.sendText(value)
+        sendReplacement(value)
 
         history.entry = replacement
         flickCommitHistory = history
@@ -533,8 +541,7 @@ struct ContentView: View {
         guard let replacement = history.model.dakutenEntry(for: history.direction) else { return false }
         guard case .sendText(let value) = replacement.action else { return false }
 
-        bleManager.sendBackspace(1)
-        bleManager.sendText(value)
+        sendReplacement(value)
 
         history.entry = replacement
         flickCommitHistory = history
@@ -546,12 +553,18 @@ struct ContentView: View {
         guard let replacement = history.model.handakutenEntry(for: history.direction) else { return false }
         guard case .sendText(let value) = replacement.action else { return false }
 
-        bleManager.sendBackspace(1)
-        bleManager.sendText(value)
+        sendReplacement(value)
 
         history.entry = replacement
         flickCommitHistory = history
         return true
+    }
+
+    private func sendReplacement(_ romaji: String) {
+        bleManager.sendBackspace(1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            bleManager.sendText(romaji)
+        }
     }
 
     private func keyOutput(from label: String) -> String {

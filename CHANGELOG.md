@@ -21,6 +21,9 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
  - iOS: キーボードを閉じるボタン（TextEditor直下とキーボードアクセサリバーに追加）
 
 ### Changed
+- フリックキーボードを 4×5 レイアウトに再構築し、Undo・Space・Enter などのユーティリティキーを再配置
+- フリック方向を「→=e / ↑=u / ↓=o / ←=i」に統一し、記号キーは IME でそのまま解釈できる ASCII コードを送信するよう調整
+- や/わ 行や補助キーのマッピングを刷新し、Tab/Space/Backspace などの補助キーを端列に集約
 - Adjusted TinyUSB HID startup sequence to enumerate the keyboard interface reliably
 - Aligned firmware BLE service/characteristic UUIDs with the iOS client configuration
 - Switched Arduino sketch key handling to TinyUSB sendReport for deterministic HID output
@@ -35,6 +38,9 @@ All notable changes to the SmartphoneKeyboardConnector project will be documente
  - iOS UI: Added toggles for Immediate Send and Unicode Mode; wired TextEditor on-change to per-character send when enabled
 
 ### Fixed
+- フリック小書き・濁点変換で文字が消えてしまう問題を送信遅延の挿入で解消
+- `CMD:KEY` 受信時にペイロード先頭に余計な `:` が残り矢印キーが動作しない不具合を修正
+- 矢印キー/Undo の HID 送信を `keyboardReport` + `keyboardRelease` で正しく発火するよう修正
 - BLE device discovery issues in iOS app
 - HID enumeration infinite hang on XIAO nRF52840
 - Multiple BLE message queuing problems

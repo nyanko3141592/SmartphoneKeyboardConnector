@@ -43,15 +43,26 @@ bool bleConnected = false;
 static char commandBuffer[TEXT_BUFFER_SIZE];
 static size_t commandLength = 0;
 static bool collectingCommand = false;
+static size_t commandPrefixMatch = 0;
+static constexpr char COMMAND_PREFIX[] = "CMD:";
+static constexpr size_t COMMAND_PREFIX_LENGTH = sizeof(COMMAND_PREFIX) - 1;
 
 void handleCommand(const char* command);
 void handleMouseCommand(char* payload);
+void handleKeyCommand(const char* payload);
 uint8_t mouseButtonMaskFromString(const char* token);
 void sendMouseMove(int dx, int dy);
 void sendMouseScroll(int delta);
 void sendMouseClick(uint8_t buttonMask);
 void sendMouseDoubleClick(uint8_t buttonMask);
 int8_t clampToInt8(int value);
+void sendKeycode(uint8_t keycode);
+void sendKeycodeWithModifier(uint8_t modifier, uint8_t keycode);
+
+constexpr uint8_t KEYCODE_ARROW_LEFT = 0x50;
+constexpr uint8_t KEYCODE_ARROW_RIGHT = 0x4F;
+constexpr uint8_t KEYCODE_Z = 0x1D;
+constexpr uint8_t MODIFIER_COMMAND = 0x08; // Left GUI acts as Command key on macOS
 
 void setup() {
     // Start HID first (align with Adafruit example)
@@ -200,6 +211,19 @@ void sendSimpleKey(char c) {
             case ',': keycode = 0x36; break;
             case '.': keycode = 0x37; break;
             case '/': keycode = 0x38; break;
+            case '!': modifier = 0x02; keycode = 0x1E; break; // Shift + 1
+            case '?': modifier = 0x02; keycode = 0x38; break; // Shift + /
+            case '{': modifier = 0x02; keycode = 0x2F; break; // Shift + [
+            case '}': modifier = 0x02; keycode = 0x30; break; // Shift + ]
+            case ':': modifier = 0x02; keycode = 0x33; break; // Shift + ;
+            case '"': modifier = 0x02; keycode = 0x34; break; // Shift + '
+            case '_': modifier = 0x02; keycode = 0x2D; break; // Shift + -
+            case '|': modifier = 0x02; keycode = 0x31; break; // Shift + \
+            case '<': modifier = 0x02; keycode = 0x36; break; // Shift + ,
+            case '>': modifier = 0x02; keycode = 0x37; break; // Shift + .
+            case '~': modifier = 0x02; keycode = 0x35; break; // Shift + `
+            case '(': modifier = 0x02; keycode = 0x26; break; // Shift + 9
+            case ')': modifier = 0x02; keycode = 0x27; break; // Shift + 0
             default:
                 handled = false;
                 break;
@@ -233,6 +257,9 @@ void handleCommand(const char* command) {
         strncpy(payload, command + 6, sizeof(payload) - 1);
         payload[sizeof(payload) - 1] = '\0';
         handleMouseCommand(payload);
+    } else if (strncmp(command, "KEY:", 4) == 0) {
+        const char* payload = command + 4;
+        handleKeyCommand(payload);
     }
 }
 
@@ -260,6 +287,18 @@ void handleMouseCommand(char* payload) {
         if (!deltaToken) return;
         int delta = atoi(deltaToken);
         sendMouseScroll(delta);
+    }
+}
+
+void handleKeyCommand(const char* payload) {
+    if (!payload) return;
+
+    if (strcasecmp(payload, "LEFT") == 0) {
+        sendKeycode(KEYCODE_ARROW_LEFT);
+    } else if (strcasecmp(payload, "RIGHT") == 0) {
+        sendKeycode(KEYCODE_ARROW_RIGHT);
+    } else if (strcasecmp(payload, "UNDO") == 0) {
+        sendKeycodeWithModifier(MODIFIER_COMMAND, KEYCODE_Z);
     }
 }
 
@@ -315,6 +354,28 @@ int8_t clampToInt8(int value) {
     return static_cast<int8_t>(value);
 }
 
+void sendKeycode(uint8_t keycode) {
+    if (TinyUSBDevice.suspended()) TinyUSBDevice.remoteWakeup();
+    if (!usb_hid.ready()) return;
+
+    uint8_t keycodes[6] = { keycode, 0, 0, 0, 0, 0 };
+    usb_hid.keyboardReport(RID_KEYBOARD, 0, keycodes);
+    delay(6);
+    usb_hid.keyboardRelease(RID_KEYBOARD);
+    delay(6);
+}
+
+void sendKeycodeWithModifier(uint8_t modifier, uint8_t keycode) {
+    if (TinyUSBDevice.suspended()) TinyUSBDevice.remoteWakeup();
+    if (!usb_hid.ready()) return;
+
+    uint8_t keycodes[6] = { keycode, 0, 0, 0, 0, 0 };
+    usb_hid.keyboardReport(RID_KEYBOARD, modifier, keycodes);
+    delay(6);
+    usb_hid.keyboardRelease(RID_KEYBOARD);
+    delay(6);
+}
+
 void ble_uart_rx_callback(uint16_t conn_handle) {
     char data[TEXT_BUFFER_SIZE];
     uint16_t len = bleuart.read(data, TEXT_BUFFER_SIZE - 1);
@@ -323,7 +384,8 @@ void ble_uart_rx_callback(uint16_t conn_handle) {
         return;
     }
 
-    for (uint16_t idx = 0; idx < len; idx++) {
+    size_t idx = 0;
+    while (idx < len) {
         char c = data[idx];
 
         if (collectingCommand) {
@@ -333,29 +395,49 @@ void ble_uart_rx_callback(uint16_t conn_handle) {
                 commandLength = 0;
                 collectingCommand = false;
             } else if (commandLength < TEXT_BUFFER_SIZE - 1) {
+                if (commandLength == 0 && c == ':') {
+                    idx++;
+                    continue;
+                }
                 commandBuffer[commandLength++] = c;
             }
+            idx++;
             continue;
         }
 
-        if (c == 'C' && idx + 3 < len &&
-            data[idx + 1] == 'M' && data[idx + 2] == 'D' && data[idx + 3] == ':') {
-            collectingCommand = true;
-            commandLength = 0;
-            idx += 3; // Skip over "CMD"; for-loop increment skips ':'
-            continue;
-        }
+        if (commandPrefixMatch < COMMAND_PREFIX_LENGTH) {
+            if (c == COMMAND_PREFIX[commandPrefixMatch]) {
+                commandPrefixMatch++;
+                idx++;
+                if (commandPrefixMatch == COMMAND_PREFIX_LENGTH) {
+                    collectingCommand = true;
+                    commandLength = 0;
+                    commandPrefixMatch = 0;
+                }
+                continue;
+            } else if (commandPrefixMatch > 0) {
+                idx -= commandPrefixMatch;
+                commandPrefixMatch = 0;
 
-        // Treat remaining data as keyboard text input
-        if (!hasNewText) {
-            size_t remaining = len - idx;
-            if (remaining >= TEXT_BUFFER_SIZE) {
-                remaining = TEXT_BUFFER_SIZE - 1;
+                size_t remaining = len - idx;
+                if (remaining >= TEXT_BUFFER_SIZE) {
+                    remaining = TEXT_BUFFER_SIZE - 1;
+                }
+                memcpy(textBuffer, &data[idx], remaining);
+                textBuffer[remaining] = '\0';
+                hasNewText = true;
+                break;
             }
-            memcpy(textBuffer, &data[idx], remaining);
-            textBuffer[remaining] = '\0';
-            hasNewText = true;
         }
+
+        size_t remaining = len - idx;
+        if (remaining >= TEXT_BUFFER_SIZE) {
+            remaining = TEXT_BUFFER_SIZE - 1;
+        }
+        memcpy(textBuffer, &data[idx], remaining);
+        textBuffer[remaining] = '\0';
+        hasNewText = true;
+        commandPrefixMatch = 0;
         break;
     }
 }

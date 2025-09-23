@@ -17,6 +17,9 @@ enum FlickAction: Equatable {
     case transformSmall
     case applyDakuten
     case applyHandakuten
+    case cursorLeft
+    case cursorRight
+    case undo
 }
 
 struct FlickEntry: Equatable {
@@ -68,20 +71,21 @@ struct FlickKeyboardLayout {
 
     static let standard: FlickKeyboardLayout = {
         let row1: [FlickKeyModel] = [
+            .functional(label: "Undo", action: .undo),
             .kana(
                 base: [
                     .center: ("あ", "a"),
-                    .right: ("い", "i"),
+                    .right: ("え", "e"),
                     .up: ("う", "u"),
-                    .down: ("え", "e"),
-                    .left: ("お", "o")
+                    .down: ("お", "o"),
+                    .left: ("い", "i")
                 ],
                 small: [
                     .center: ("ぁ", "xa"),
-                    .right: ("ぃ", "xi"),
+                    .right: ("ぇ", "xe"),
                     .up: ("ぅ", "xu"),
-                    .down: ("ぇ", "xe"),
-                    .left: ("ぉ", "xo")
+                    .down: ("ぉ", "xo"),
+                    .left: ("ぃ", "xi")
                 ],
                 dakuten: [
                     .up: ("ゔ", "vu")
@@ -90,99 +94,103 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("か", "ka"),
-                    .right: ("き", "ki"),
+                    .right: ("け", "ke"),
                     .up: ("く", "ku"),
-                    .down: ("け", "ke"),
-                    .left: ("こ", "ko")
+                    .down: ("こ", "ko"),
+                    .left: ("き", "ki")
                 ],
                 dakuten: [
                     .center: ("が", "ga"),
-                    .right: ("ぎ", "gi"),
+                    .right: ("げ", "ge"),
                     .up: ("ぐ", "gu"),
-                    .down: ("げ", "ge"),
-                    .left: ("ご", "go")
+                    .down: ("ご", "go"),
+                    .left: ("ぎ", "gi")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("さ", "sa"),
-                    .right: ("し", "shi"),
+                    .right: ("せ", "se"),
                     .up: ("す", "su"),
-                    .down: ("せ", "se"),
-                    .left: ("そ", "so")
+                    .down: ("そ", "so"),
+                    .left: ("し", "shi")
                 ],
                 dakuten: [
                     .center: ("ざ", "za"),
-                    .right: ("じ", "ji"),
+                    .right: ("ぜ", "ze"),
                     .up: ("ず", "zu"),
-                    .down: ("ぜ", "ze"),
-                    .left: ("ぞ", "zo")
+                    .down: ("ぞ", "zo"),
+                    .left: ("じ", "ji")
                 ]
-            )
+            ),
+            .functional(label: "Backspace", action: .backspace)
         ]
 
         let row2: [FlickKeyModel] = [
+            .functional(label: "←", action: .cursorLeft),
             .kana(
                 base: [
                     .center: ("た", "ta"),
-                    .right: ("ち", "chi"),
+                    .right: ("て", "te"),
                     .up: ("つ", "tsu"),
-                    .down: ("て", "te"),
-                    .left: ("と", "to")
+                    .down: ("と", "to"),
+                    .left: ("ち", "chi")
                 ],
                 small: [
                     .up: ("っ", "xtsu")
                 ],
                 dakuten: [
                     .center: ("だ", "da"),
-                    .right: ("ぢ", "di"),
+                    .right: ("で", "de"),
                     .up: ("づ", "du"),
-                    .down: ("で", "de"),
-                    .left: ("ど", "do")
+                    .down: ("ど", "do"),
+                    .left: ("ぢ", "di")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("な", "na"),
-                    .right: ("に", "ni"),
+                    .right: ("ね", "ne"),
                     .up: ("ぬ", "nu"),
-                    .down: ("ね", "ne"),
-                    .left: ("の", "no")
+                    .down: ("の", "no"),
+                    .left: ("に", "ni")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("は", "ha"),
-                    .right: ("ひ", "hi"),
+                    .right: ("へ", "he"),
                     .up: ("ふ", "fu"),
-                    .down: ("へ", "he"),
-                    .left: ("ほ", "ho")
+                    .down: ("ほ", "ho"),
+                    .left: ("ひ", "hi")
                 ],
                 dakuten: [
                     .center: ("ば", "ba"),
-                    .right: ("び", "bi"),
+                    .right: ("べ", "be"),
                     .up: ("ぶ", "bu"),
-                    .down: ("べ", "be"),
-                    .left: ("ぼ", "bo")
+                    .down: ("ぼ", "bo"),
+                    .left: ("び", "bi")
                 ],
                 handakuten: [
                     .center: ("ぱ", "pa"),
-                    .right: ("ぴ", "pi"),
+                    .right: ("ぺ", "pe"),
                     .up: ("ぷ", "pu"),
-                    .down: ("ぺ", "pe"),
-                    .left: ("ぽ", "po")
+                    .down: ("ぽ", "po"),
+                    .left: ("ぴ", "pi")
                 ]
-            )
+            ),
+            .functional(label: "→", action: .cursorRight)
         ]
 
         let row3: [FlickKeyModel] = [
+            .functional(label: "Tab", action: .tab),
             .kana(
                 base: [
                     .center: ("ま", "ma"),
-                    .right: ("み", "mi"),
+                    .right: ("め", "me"),
                     .up: ("む", "mu"),
-                    .down: ("め", "me"),
-                    .left: ("も", "mo")
+                    .down: ("も", "mo"),
+                    .left: ("み", "mi")
                 ]
             ),
             FlickKeyModel(
@@ -190,13 +198,14 @@ struct FlickKeyboardLayout {
                     .center: FlickEntry(label: "や", action: .sendText("ya")),
                     .right: FlickEntry(label: "(", action: .sendText("(")),
                     .up: FlickEntry(label: "ゆ", action: .sendText("yu")),
-                    .down: FlickEntry(label: ")", action: .sendText(")")),
-                    .left: FlickEntry(label: "よ", action: .sendText("yo"))
+                    .down: FlickEntry(label: "よ", action: .sendText("yo")),
+                    .left: FlickEntry(label: "ゃ", action: .sendText("lya"))
                 ],
                 smallEntries: [
                     .center: FlickEntry(label: "ゃ", action: .sendText("lya")),
                     .up: FlickEntry(label: "ゅ", action: .sendText("lyu")),
-                    .left: FlickEntry(label: "ょ", action: .sendText("lyo"))
+                    .down: FlickEntry(label: "ょ", action: .sendText("lyo")),
+                    .left: FlickEntry(label: "ゃ", action: .sendText("lya"))
                 ],
                 dakutenEntries: nil,
                 handakutenEntries: nil,
@@ -206,19 +215,35 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("ら", "ra"),
-                    .right: ("り", "ri"),
+                    .right: ("れ", "re"),
                     .up: ("る", "ru"),
-                    .down: ("れ", "re"),
-                    .left: ("ろ", "ro")
+                    .down: ("ろ", "ro"),
+                    .left: ("り", "ri")
                 ]
-            )
+            ),
+            .functional(label: "Space", action: .space)
         ]
 
         let row4: [FlickKeyModel] = [
             FlickKeyModel(
                 entries: [
+                    .center: FlickEntry(label: "「", action: .sendText("[")),
+                    .right: FlickEntry(label: "」", action: .sendText("]")),
+                    .up: FlickEntry(label: "『", action: .sendText("{")),
+                    .down: FlickEntry(label: "』", action: .sendText("}")),
+                    .left: FlickEntry(label: "・", action: .sendText("/"))
+                ],
+                smallEntries: nil,
+                dakutenEntries: nil,
+                handakutenEntries: nil,
+                width: 1.0,
+                kind: .functional
+            ),
+            FlickKeyModel(
+                entries: [
                     .center: FlickEntry(label: "小", action: .transformSmall),
                     .up: FlickEntry(label: "小", action: .transformSmall),
+                    .down: FlickEntry(label: "小", action: .transformSmall),
                     .left: FlickEntry(label: "゛", action: .applyDakuten),
                     .right: FlickEntry(label: "゜", action: .applyHandakuten)
                 ],
@@ -231,10 +256,10 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("わ", "wa"),
-                    .right: ("を", "wo"),
+                    .right: ("ゑ", "we"),
                     .up: ("ん", "nn"),
-                    .down: ("ゎ", "xwa"),
-                    .left: ("ー", "ー")
+                    .down: ("を", "wo"),
+                    .left: ("ゐ", "wi")
                 ],
                 small: [
                     .center: ("ゎ", "xwa")
@@ -242,28 +267,22 @@ struct FlickKeyboardLayout {
             ),
             FlickKeyModel(
                 entries: [
-                    .center: FlickEntry(label: "、", action: .sendText("、")),
-                    .right: FlickEntry(label: "。", action: .sendText("。")),
+                    .center: FlickEntry(label: "、", action: .sendText(",")),
+                    .right: FlickEntry(label: "。", action: .sendText(".")),
                     .up: FlickEntry(label: "？", action: .sendText("?")),
                     .down: FlickEntry(label: "！", action: .sendText("!")),
-                    .left: FlickEntry(label: "…", action: .sendText("…"))
+                    .left: FlickEntry(label: "…", action: .sendText("..."))
                 ],
                 smallEntries: nil,
                 dakutenEntries: nil,
                 handakutenEntries: nil,
                 width: 1.0,
                 kind: .functional
-            )
+            ),
+            .functional(label: "Enter", action: .enter)
         ]
 
-        let functionRow: [FlickKeyModel] = [
-            .functional(label: "Space", action: .space, width: 1.8),
-            .functional(label: "Enter", action: .enter),
-            .functional(label: "Backspace", action: .backspace),
-            .functional(label: "゛", action: .applyDakuten),
-            .functional(label: "゜", action: .applyHandakuten),
-            .functional(label: "Tab", action: .tab)
-        ]
+        let functionRow: [FlickKeyModel] = []
 
         return FlickKeyboardLayout(rows: [row1, row2, row3, row4], functionRow: functionRow)
     }()
