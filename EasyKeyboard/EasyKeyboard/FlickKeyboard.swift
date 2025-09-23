@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 enum FlickDirection: CaseIterable {
     case center
@@ -60,9 +59,7 @@ struct FlickKeyModel: Identifiable {
         handakutenEntries?[direction]
     }
 
-    var availableDirections: Set<FlickDirection> {
-        Set(entries.keys)
-    }
+    var availableDirections: Set<FlickDirection> { Set(entries.keys) }
 }
 
 struct FlickKeyboardLayout {
@@ -74,52 +71,52 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("あ", "a"),
-                    .up: ("い", "i"),
-                    .right: ("う", "u"),
-                    .down: ("え", "e"),
-                    .left: ("お", "o")
+                    .left: ("い", "i"),
+                    .up: ("う", "u"),
+                    .right: ("え", "e"),
+                    .down: ("お", "o")
                 ],
                 small: [
                     .center: ("ぁ", "xa"),
-                    .up: ("ぃ", "xi"),
-                    .right: ("ぅ", "xu"),
-                    .down: ("ぇ", "xe"),
-                    .left: ("ぉ", "xo")
+                    .left: ("ぃ", "xi"),
+                    .up: ("ぅ", "xu"),
+                    .right: ("ぇ", "xe"),
+                    .down: ("ぉ", "xo")
                 ],
                 dakuten: [
-                    .right: ("ゔ", "vu")
+                    .up: ("ゔ", "vu")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("か", "ka"),
-                    .up: ("き", "ki"),
-                    .right: ("く", "ku"),
-                    .down: ("け", "ke"),
-                    .left: ("こ", "ko")
+                    .left: ("き", "ki"),
+                    .up: ("く", "ku"),
+                    .right: ("け", "ke"),
+                    .down: ("こ", "ko")
                 ],
                 dakuten: [
                     .center: ("が", "ga"),
-                    .up: ("ぎ", "gi"),
-                    .right: ("ぐ", "gu"),
-                    .down: ("げ", "ge"),
-                    .left: ("ご", "go")
+                    .left: ("ぎ", "gi"),
+                    .up: ("ぐ", "gu"),
+                    .right: ("げ", "ge"),
+                    .down: ("ご", "go")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("さ", "sa"),
-                    .up: ("し", "shi"),
-                    .right: ("す", "su"),
-                    .down: ("せ", "se"),
-                    .left: ("そ", "so")
+                    .left: ("し", "shi"),
+                    .up: ("す", "su"),
+                    .right: ("せ", "se"),
+                    .down: ("そ", "so")
                 ],
                 dakuten: [
                     .center: ("ざ", "za"),
-                    .up: ("じ", "ji"),
-                    .right: ("ず", "zu"),
-                    .down: ("ぜ", "ze"),
-                    .left: ("ぞ", "zo")
+                    .left: ("じ", "ji"),
+                    .up: ("ず", "zu"),
+                    .right: ("ぜ", "ze"),
+                    .down: ("ぞ", "zo")
                 ]
             )
         ]
@@ -128,52 +125,52 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("た", "ta"),
-                    .up: ("ち", "chi"),
-                    .right: ("つ", "tsu"),
-                    .down: ("て", "te"),
-                    .left: ("と", "to")
+                    .left: ("ち", "chi"),
+                    .up: ("つ", "tsu"),
+                    .right: ("て", "te"),
+                    .down: ("と", "to")
                 ],
                 small: [
-                    .right: ("っ", "xtsu")
+                    .up: ("っ", "xtsu")
                 ],
                 dakuten: [
                     .center: ("だ", "da"),
-                    .up: ("ぢ", "di"),
-                    .right: ("づ", "du"),
-                    .down: ("で", "de"),
-                    .left: ("ど", "do")
+                    .left: ("ぢ", "di"),
+                    .up: ("づ", "du"),
+                    .right: ("で", "de"),
+                    .down: ("ど", "do")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("な", "na"),
-                    .up: ("に", "ni"),
-                    .right: ("ぬ", "nu"),
-                    .down: ("ね", "ne"),
-                    .left: ("の", "no")
+                    .left: ("に", "ni"),
+                    .up: ("ぬ", "nu"),
+                    .right: ("ね", "ne"),
+                    .down: ("の", "no")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("は", "ha"),
-                    .up: ("ひ", "hi"),
-                    .right: ("ふ", "fu"),
-                    .down: ("へ", "he"),
-                    .left: ("ほ", "ho")
+                    .left: ("ひ", "hi"),
+                    .up: ("ふ", "fu"),
+                    .right: ("へ", "he"),
+                    .down: ("ほ", "ho")
                 ],
                 dakuten: [
                     .center: ("ば", "ba"),
-                    .up: ("び", "bi"),
-                    .right: ("ぶ", "bu"),
-                    .down: ("べ", "be"),
-                    .left: ("ぼ", "bo")
+                    .left: ("び", "bi"),
+                    .up: ("ぶ", "bu"),
+                    .right: ("べ", "be"),
+                    .down: ("ぼ", "bo")
                 ],
                 handakuten: [
                     .center: ("ぱ", "pa"),
-                    .up: ("ぴ", "pi"),
-                    .right: ("ぷ", "pu"),
-                    .down: ("ぺ", "pe"),
-                    .left: ("ぽ", "po")
+                    .left: ("ぴ", "pi"),
+                    .up: ("ぷ", "pu"),
+                    .right: ("ぺ", "pe"),
+                    .down: ("ぽ", "po")
                 ]
             )
         ]
@@ -182,33 +179,33 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("ま", "ma"),
-                    .up: ("み", "mi"),
-                    .right: ("む", "mu"),
-                    .down: ("め", "me"),
-                    .left: ("も", "mo")
+                    .left: ("み", "mi"),
+                    .up: ("む", "mu"),
+                    .right: ("め", "me"),
+                    .down: ("も", "mo")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("や", "ya"),
+                    .left: ("ゃ", "lya"),
                     .up: ("ゆ", "yu"),
-                    .right: ("よ", "yo"),
-                    .left: ("ゃ", "lya")
+                    .down: ("よ", "yo")
                 ],
                 small: [
                     .center: ("ゃ", "lya"),
+                    .left: ("ゃ", "lya"),
                     .up: ("ゅ", "lyu"),
-                    .right: ("ょ", "lyo"),
-                    .left: ("ゃ", "lya")
+                    .down: ("ょ", "lyo")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("ら", "ra"),
-                    .up: ("り", "ri"),
-                    .right: ("る", "ru"),
-                    .down: ("れ", "re"),
-                    .left: ("ろ", "ro")
+                    .left: ("り", "ri"),
+                    .up: ("る", "ru"),
+                    .right: ("れ", "re"),
+                    .down: ("ろ", "ro")
                 ]
             )
         ]
@@ -218,22 +215,22 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("ん", "nn"),
-                    .up: ("わ", "wa"),
-                    .right: ("ー", "-"),
-                    .down: ("〜", "~"),
-                    .left: ("を", "wo")
+                    .left: ("わ", "wa"),
+                    .up: ("ー", "-"),
+                    .right: ("〜", "~"),
+                    .down: ("を", "wo")
                 ],
                 small: [
-                    .up: ("ゎ", "xwa")
+                    .left: ("ゎ", "xwa")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("、", "、"),
-                    .up: ("？", "?"),
-                    .right: ("！", "!"),
-                    .down: ("…", "…"),
-                    .left: ("。", "。")
+                    .left: ("？", "?"),
+                    .up: ("！", "!"),
+                    .right: ("…", "…"),
+                    .down: ("。", "。")
                 ]
             )
         ]
