@@ -196,16 +196,15 @@ struct FlickKeyboardLayout {
             FlickKeyModel(
                 entries: [
                     .center: FlickEntry(label: "や", action: .sendText("ya")),
-                    .right: FlickEntry(label: "(", action: .sendText("(")),
+                    .right: FlickEntry(label: ")", action: .sendText(")")),
                     .up: FlickEntry(label: "ゆ", action: .sendText("yu")),
                     .down: FlickEntry(label: "よ", action: .sendText("yo")),
-                    .left: FlickEntry(label: "ゃ", action: .sendText("lya"))
+                    .left: FlickEntry(label: "(", action: .sendText("("))
                 ],
                 smallEntries: [
                     .center: FlickEntry(label: "ゃ", action: .sendText("lya")),
                     .up: FlickEntry(label: "ゅ", action: .sendText("lyu")),
-                    .down: FlickEntry(label: "ょ", action: .sendText("lyo")),
-                    .left: FlickEntry(label: "ゃ", action: .sendText("lya"))
+                    .down: FlickEntry(label: "ょ", action: .sendText("lyo"))
                 ],
                 dakutenEntries: nil,
                 handakutenEntries: nil,
