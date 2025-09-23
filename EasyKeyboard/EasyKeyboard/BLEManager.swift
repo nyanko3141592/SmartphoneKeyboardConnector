@@ -25,6 +25,11 @@ class BLEManager: NSObject, ObservableObject {
         case middle = "MIDDLE"
     }
 
+    enum CursorKey: String {
+        case left = "LEFT"
+        case right = "RIGHT"
+    }
+
     private var centralManager: CBCentralManager!
     private var textCharacteristic: CBCharacteristic?
     private var statusCharacteristic: CBCharacteristic?
@@ -157,6 +162,22 @@ class BLEManager: NSObject, ObservableObject {
         guard isConnected else { return }
         guard dy != 0 else { return }
         sendMouseCommand("SCROLL:\(dy)")
+    }
+
+    @discardableResult
+    func sendCursor(_ key: CursorKey) -> Bool {
+        guard isConnected else { return false }
+        guard textCharacteristic != nil else { return false }
+        sendText("CMD:KEY:\(key.rawValue)\n")
+        return true
+    }
+
+    @discardableResult
+    func sendUndo() -> Bool {
+        guard isConnected else { return false }
+        guard textCharacteristic != nil else { return false }
+        sendText("CMD:KEY:UNDO\n")
+        return true
     }
 
     private func sendMouseCommand(_ command: String) {

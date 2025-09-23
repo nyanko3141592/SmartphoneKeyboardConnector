@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
@@ -17,10 +18,12 @@ struct ContentView: View {
     @State private var selectedMode: InputMode = .text
     @State private var trackpadSensitivity: Double = 1.4
     @State private var tapToClickEnabled = true
+    @State private var flickCommitHistory: FlickCommitHistory?
 
     enum InputMode: String, CaseIterable, Identifiable {
         case text
         case keyboard
+        case flick
         case mouse
 
         var id: String { rawValue }
@@ -29,6 +32,7 @@ struct ContentView: View {
             switch self {
             case .text: return "テキスト入力"
             case .keyboard: return "キーボード"
+            case .flick: return "フリック"
             case .mouse: return "マウス"
             }
         }
@@ -37,6 +41,7 @@ struct ContentView: View {
             switch self {
             case .text: return "character.cursor.ibeam"
             case .keyboard: return "keyboard"
+            case .flick: return "square.grid.3x3.fill"
             case .mouse: return "rectangle.and.hand.point.up.left"
             }
         }
@@ -65,8 +70,19 @@ struct ContentView: View {
             DeviceListView(bleManager: bleManager, isPresented: $showDeviceList)
         }
         .safeAreaInset(edge: .bottom) {
-            if selectedMode == .keyboard, let layout = parsedLayout {
-                keyboardInset(layout: layout)
+            Group {
+                switch selectedMode {
+                case .keyboard:
+                    if let layout = parsedLayout {
+                        keyboardInset(layout: layout)
+                    } else {
+                        EmptyView()
+                    }
+                case .flick:
+                    flickKeyboardInset()
+                default:
+                    EmptyView()
+                }
             }
         }
         .onAppear { handleOnAppear() }
@@ -149,6 +165,8 @@ struct ContentView: View {
             textInputSection
         case .keyboard:
             keyboardSection
+        case .flick:
+            flickSection
         case .mouse:
             mouseSection
         }
@@ -207,13 +225,31 @@ struct ContentView: View {
                 Spacer()
             }
         }
-    }
+                }
 
     private var keyboardSection: some View {
         VStack(spacing: 10) {
             Text("キーボードモード")
                 .font(.caption)
                 .foregroundColor(.secondary)
+        }
+    }
+
+    private var flickSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("フリックモード")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Text("下部のフリックキーボードからひらがなに対応するローマ字を送信します。中央タップで基本音、フリックで派生音/記号を選択できます。")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            if !bleManager.isConnected {
+                Text("デバイス未接続のため送信は保留されます。接続後に自動で反映されます。")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
         }
     }
 
@@ -329,28 +365,7 @@ struct ContentView: View {
     private func keyboardInset(layout: ParsedKeyboardLayout) -> some View {
         let isMobile = horizontalSizeClass == .compact
         VStack(spacing: isMobile ? 3 : 8) {
-            // 縦型（compact）の場合のみトラックパッドを表示
-            if isMobile {
-                CompactTrackpadView(
-                    sensitivity: trackpadSensitivity,
-                    onMove: { dx, dy in
-                        bleManager.sendMouseMove(dx: dx, dy: dy)
-                    },
-                    onScroll: { delta in
-                        bleManager.sendMouseScroll(dy: delta)
-                    },
-                    onLeftClick: {
-                        bleManager.sendMouseClick(.left)
-                    },
-                    onMiddleClick: {
-                        bleManager.sendMouseClick(.middle)
-                    },
-                    onRightClick: {
-                        bleManager.sendMouseClick(.right)
-                    }
-                )
-                .padding(.bottom, 4)
-            }
+            trackpadSection(isMobile: isMobile)
 
             // キーボード行
             ForEach(0..<layout.rows.count, id: \.self) { index in
@@ -363,6 +378,46 @@ struct ContentView: View {
         .padding(.horizontal, isMobile ? 6 : 16)
         .padding(.vertical, isMobile ? 8 : 8)
         .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func flickKeyboardInset() -> some View {
+        let isMobile = horizontalSizeClass == .compact
+        VStack(spacing: isMobile ? 6 : 10) {
+            trackpadSection(isMobile: isMobile)
+
+            FlickKeyboardView(isCompact: isMobile) { entry, metadata in
+                handleFlickCommit(entry, metadata: metadata)
+            }
+        }
+        .padding(.horizontal, isMobile ? 6 : 16)
+        .padding(.vertical, isMobile ? 8 : 10)
+        .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func trackpadSection(isMobile: Bool) -> some View {
+        if isMobile {
+            CompactTrackpadView(
+                sensitivity: trackpadSensitivity,
+                onMove: { dx, dy in
+                    bleManager.sendMouseMove(dx: dx, dy: dy)
+                },
+                onScroll: { delta in
+                    bleManager.sendMouseScroll(dy: delta)
+                },
+                onLeftClick: {
+                    bleManager.sendMouseClick(.left)
+                },
+                onMiddleClick: {
+                    bleManager.sendMouseClick(.middle)
+                },
+                onRightClick: {
+                    bleManager.sendMouseClick(.right)
+                }
+            )
+            .padding(.bottom, 4)
+        }
     }
 
     private func handleOnAppear() {
@@ -383,9 +438,11 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 isTextFieldFocused = true
             }
-        case .keyboard, .mouse:
+        case .keyboard, .flick, .mouse:
             isTextFieldFocused = false
         }
+
+        flickCommitHistory = nil
     }
 
     private func commitText() {
@@ -423,6 +480,101 @@ struct ContentView: View {
         }
     }
 
+    private func handleFlickCommit(_ entry: FlickEntry, metadata: FlickCommitMetadata?) {
+        var performed = false
+
+        switch entry.action {
+        case .sendText(let value):
+            bleManager.sendText(value)
+            if let metadata {
+                flickCommitHistory = FlickCommitHistory(model: metadata.model, direction: metadata.direction, entry: entry)
+            } else {
+                flickCommitHistory = nil
+            }
+            performed = true
+        case .enter:
+            bleManager.sendReturn()
+            flickCommitHistory = nil
+            performed = true
+        case .backspace:
+            bleManager.sendBackspace(1)
+            flickCommitHistory = nil
+            performed = true
+        case .tab:
+            bleManager.sendText("\t")
+            flickCommitHistory = nil
+            performed = true
+        case .space:
+            bleManager.sendText(" ")
+            flickCommitHistory = nil
+            performed = true
+        case .transformSmall:
+            performed = applySmallTransformation()
+        case .applyDakuten:
+            performed = applyDakutenTransformation()
+        case .applyHandakuten:
+            performed = applyHandakutenTransformation()
+        case .cursorLeft:
+            performed = bleManager.sendCursor(.left)
+            flickCommitHistory = nil
+        case .cursorRight:
+            performed = bleManager.sendCursor(.right)
+            flickCommitHistory = nil
+        case .undo:
+            performed = bleManager.sendUndo()
+            flickCommitHistory = nil
+        }
+
+        if performed {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private func applySmallTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.smallEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        sendReplacement(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
+    private func applyDakutenTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.dakutenEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        sendReplacement(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
+    private func applyHandakutenTransformation() -> Bool {
+        guard var history = flickCommitHistory else { return false }
+        guard let replacement = history.model.handakutenEntry(for: history.direction) else { return false }
+        guard case .sendText(let value) = replacement.action else { return false }
+
+        sendReplacement(value)
+
+        history.entry = replacement
+        flickCommitHistory = history
+        return true
+    }
+
+    private func sendReplacement(_ romaji: String) {
+        bleManager.sendBackspace(1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            bleManager.sendText(romaji)
+        }
+    }
+
     private func keyOutput(from label: String) -> String {
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
         switch name {
@@ -444,6 +596,12 @@ struct ContentView: View {
     }
 }
 
+private struct FlickCommitHistory {
+    let model: FlickKeyModel
+    let direction: FlickDirection
+    var entry: FlickEntry
+}
+
 struct TrackpadSurface: View {
     let sensitivity: Double
     let tapToClick: Bool
@@ -455,24 +613,6 @@ struct TrackpadSurface: View {
     @State private var previousTranslation: CGSize = .zero
     @State private var accumulator: CGSize = .zero
     @State private var isTracking = false
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                isTracking = true
-                let delta = CGSize(
-                    width: value.translation.width - previousTranslation.width,
-                    height: value.translation.height - previousTranslation.height
-                )
-                previousTranslation = value.translation
-                accumulate(delta: delta)
-            }
-            .onEnded { _ in
-                isTracking = false
-                previousTranslation = .zero
-                accumulator = .zero
-            }
-    }
 
     private var tapGestures: some Gesture {
         let doubleTap = TapGesture(count: 2).onEnded {
@@ -515,6 +655,24 @@ struct TrackpadSurface: View {
         .gesture(dragGesture)
         .highPriorityGesture(tapGestures)
         .simultaneousGesture(longPressGesture)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                isTracking = true
+                let delta = CGSize(
+                    width: value.translation.width - previousTranslation.width,
+                    height: value.translation.height - previousTranslation.height
+                )
+                previousTranslation = value.translation
+                accumulate(delta: delta)
+            }
+            .onEnded { _ in
+                isTracking = false
+                previousTranslation = .zero
+                accumulator = .zero
+            }
     }
 
     private func accumulate(delta: CGSize) {
@@ -597,41 +755,35 @@ struct CompactTrackpadView: View {
     let onMiddleClick: () -> Void
     let onRightClick: () -> Void
 
-    @State private var previousTranslation: CGSize = .zero
     @State private var accumulator: CGSize = .zero
     @State private var isTracking = false
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                isTracking = true
-                let delta = CGSize(
-                    width: value.translation.width - previousTranslation.width,
-                    height: value.translation.height - previousTranslation.height
-                )
-                previousTranslation = value.translation
-                accumulate(delta: delta)
-            }
-            .onEnded { _ in
-                isTracking = false
-                previousTranslation = .zero
-                accumulator = .zero
-            }
-    }
 
     var body: some View {
         VStack(spacing: 6) {
             // トラックパッドエリア + スクロールバー
             HStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(UIColor.systemGray6))
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isTracking ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isTracking ? 2 : 1)
-                }
+                TrackpadSurfaceView(
+                    isTracking: $isTracking,
+                    onDelta: { delta in
+                        accumulate(delta: delta)
+                    },
+                    onEnd: {
+                        resetAccumulator()
+                    },
+                    onTap: { touches in
+                        switch touches {
+                        case 1:
+                            onLeftClick()
+                        case 2:
+                            onRightClick()
+                        case 3:
+                            onMiddleClick()
+                        default:
+                            break
+                        }
+                    }
+                )
                 .frame(minHeight: 100)
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-                .gesture(dragGesture)
 
                 ScrollStrip(
                     sensitivity: sensitivity,
@@ -692,6 +844,118 @@ struct CompactTrackpadView: View {
         }
     }
 
+    private func resetAccumulator() {
+        accumulator = .zero
+    }
+
+}
+
+private struct TrackpadSurfaceView: UIViewRepresentable {
+    @Binding var isTracking: Bool
+    var onDelta: (CGSize) -> Void
+    var onEnd: () -> Void
+    var onTap: (Int) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isTracking: $isTracking, onDelta: onDelta, onEnd: onEnd, onTap: onTap)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = UIColor.systemGray6
+        view.layer.cornerRadius = 8
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.gray.withAlphaComponent(0.3).cgColor
+
+        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        panGesture.maximumNumberOfTouches = 3
+        panGesture.delegate = context.coordinator
+        view.addGestureRecognizer(panGesture)
+
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap))
+        singleTap.numberOfTouchesRequired = 1
+        singleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(singleTap)
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap))
+        doubleTap.numberOfTouchesRequired = 2
+        doubleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(doubleTap)
+
+        let tripleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTripleTap))
+        tripleTap.numberOfTouchesRequired = 3
+        tripleTap.require(toFail: panGesture)
+        view.addGestureRecognizer(tripleTap)
+
+        context.coordinator.updateBorder(for: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.updateBorder(for: uiView)
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        @Binding private var isTracking: Bool
+        private var onDelta: (CGSize) -> Void
+        private var onEnd: () -> Void
+        private var onTap: (Int) -> Void
+        private var previousTranslation: CGPoint = .zero
+
+        init(isTracking: Binding<Bool>, onDelta: @escaping (CGSize) -> Void, onEnd: @escaping () -> Void, onTap: @escaping (Int) -> Void) {
+            _isTracking = isTracking
+            self.onDelta = onDelta
+            self.onEnd = onEnd
+            self.onTap = onTap
+        }
+
+        func updateBorder(for view: UIView) {
+            view.layer.borderColor = (isTracking ? UIColor.systemBlue : UIColor.gray.withAlphaComponent(0.3)).cgColor
+            view.layer.borderWidth = isTracking ? 2 : 1
+        }
+
+        @objc func handlePan(_ sender: UIPanGestureRecognizer) {
+            switch sender.state {
+            case .began:
+                isTracking = true
+                previousTranslation = sender.translation(in: sender.view)
+                if let view = sender.view {
+                    updateBorder(for: view)
+                }
+            case .changed:
+                let translation = sender.translation(in: sender.view)
+                let delta = CGSize(width: translation.x - previousTranslation.x,
+                                   height: translation.y - previousTranslation.y)
+                previousTranslation = translation
+                onDelta(delta)
+            case .ended, .cancelled, .failed:
+                isTracking = false
+                previousTranslation = .zero
+                onEnd()
+                if let view = sender.view {
+                    updateBorder(for: view)
+                }
+            default:
+                break
+            }
+        }
+
+        @objc func handleSingleTap() {
+            onTap(1)
+        }
+
+        @objc func handleDoubleTap() {
+            onTap(2)
+        }
+
+        @objc func handleTripleTap() {
+            onTap(3)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
 }
 
 struct KeyboardRowView: View {
