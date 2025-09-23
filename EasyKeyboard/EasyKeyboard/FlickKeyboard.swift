@@ -71,17 +71,17 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("あ", "a"),
-                    .left: ("い", "i"),
+                    .right: ("い", "i"),
                     .up: ("う", "u"),
-                    .right: ("え", "e"),
-                    .down: ("お", "o")
+                    .down: ("え", "e"),
+                    .left: ("お", "o")
                 ],
                 small: [
                     .center: ("ぁ", "xa"),
-                    .left: ("ぃ", "xi"),
+                    .right: ("ぃ", "xi"),
                     .up: ("ぅ", "xu"),
-                    .right: ("ぇ", "xe"),
-                    .down: ("ぉ", "xo")
+                    .down: ("ぇ", "xe"),
+                    .left: ("ぉ", "xo")
                 ],
                 dakuten: [
                     .up: ("ゔ", "vu")
@@ -90,33 +90,33 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("か", "ka"),
-                    .left: ("き", "ki"),
+                    .right: ("き", "ki"),
                     .up: ("く", "ku"),
-                    .right: ("け", "ke"),
-                    .down: ("こ", "ko")
+                    .down: ("け", "ke"),
+                    .left: ("こ", "ko")
                 ],
                 dakuten: [
                     .center: ("が", "ga"),
-                    .left: ("ぎ", "gi"),
+                    .right: ("ぎ", "gi"),
                     .up: ("ぐ", "gu"),
-                    .right: ("げ", "ge"),
-                    .down: ("ご", "go")
+                    .down: ("げ", "ge"),
+                    .left: ("ご", "go")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("さ", "sa"),
-                    .left: ("し", "shi"),
+                    .right: ("し", "shi"),
                     .up: ("す", "su"),
-                    .right: ("せ", "se"),
-                    .down: ("そ", "so")
+                    .down: ("せ", "se"),
+                    .left: ("そ", "so")
                 ],
                 dakuten: [
                     .center: ("ざ", "za"),
-                    .left: ("じ", "ji"),
+                    .right: ("じ", "ji"),
                     .up: ("ず", "zu"),
-                    .right: ("ぜ", "ze"),
-                    .down: ("ぞ", "zo")
+                    .down: ("ぜ", "ze"),
+                    .left: ("ぞ", "zo")
                 ]
             )
         ]
@@ -125,52 +125,52 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("た", "ta"),
-                    .left: ("ち", "chi"),
+                    .right: ("ち", "chi"),
                     .up: ("つ", "tsu"),
-                    .right: ("て", "te"),
-                    .down: ("と", "to")
+                    .down: ("て", "te"),
+                    .left: ("と", "to")
                 ],
                 small: [
                     .up: ("っ", "xtsu")
                 ],
                 dakuten: [
                     .center: ("だ", "da"),
-                    .left: ("ぢ", "di"),
+                    .right: ("ぢ", "di"),
                     .up: ("づ", "du"),
-                    .right: ("で", "de"),
-                    .down: ("ど", "do")
+                    .down: ("で", "de"),
+                    .left: ("ど", "do")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("な", "na"),
-                    .left: ("に", "ni"),
+                    .right: ("に", "ni"),
                     .up: ("ぬ", "nu"),
-                    .right: ("ね", "ne"),
-                    .down: ("の", "no")
+                    .down: ("ね", "ne"),
+                    .left: ("の", "no")
                 ]
             ),
             .kana(
                 base: [
                     .center: ("は", "ha"),
-                    .left: ("ひ", "hi"),
+                    .right: ("ひ", "hi"),
                     .up: ("ふ", "fu"),
-                    .right: ("へ", "he"),
-                    .down: ("ほ", "ho")
+                    .down: ("へ", "he"),
+                    .left: ("ほ", "ho")
                 ],
                 dakuten: [
                     .center: ("ば", "ba"),
-                    .left: ("び", "bi"),
+                    .right: ("び", "bi"),
                     .up: ("ぶ", "bu"),
-                    .right: ("べ", "be"),
-                    .down: ("ぼ", "bo")
+                    .down: ("べ", "be"),
+                    .left: ("ぼ", "bo")
                 ],
                 handakuten: [
                     .center: ("ぱ", "pa"),
-                    .left: ("ぴ", "pi"),
+                    .right: ("ぴ", "pi"),
                     .up: ("ぷ", "pu"),
-                    .right: ("ぺ", "pe"),
-                    .down: ("ぽ", "po")
+                    .down: ("ぺ", "pe"),
+                    .left: ("ぽ", "po")
                 ]
             )
         ]
@@ -179,59 +179,80 @@ struct FlickKeyboardLayout {
             .kana(
                 base: [
                     .center: ("ま", "ma"),
-                    .left: ("み", "mi"),
+                    .right: ("み", "mi"),
                     .up: ("む", "mu"),
-                    .right: ("め", "me"),
-                    .down: ("も", "mo")
+                    .down: ("め", "me"),
+                    .left: ("も", "mo")
                 ]
             ),
-            .kana(
-                base: [
-                    .center: ("や", "ya"),
-                    .left: ("ゃ", "lya"),
-                    .up: ("ゆ", "yu"),
-                    .down: ("よ", "yo")
+            FlickKeyModel(
+                entries: [
+                    .center: FlickEntry(label: "や", action: .sendText("ya")),
+                    .right: FlickEntry(label: "(", action: .sendText("(")),
+                    .up: FlickEntry(label: "ゆ", action: .sendText("yu")),
+                    .down: FlickEntry(label: ")", action: .sendText(")")),
+                    .left: FlickEntry(label: "よ", action: .sendText("yo"))
                 ],
-                small: [
-                    .center: ("ゃ", "lya"),
-                    .left: ("ゃ", "lya"),
-                    .up: ("ゅ", "lyu"),
-                    .down: ("ょ", "lyo")
-                ]
+                smallEntries: [
+                    .center: FlickEntry(label: "ゃ", action: .sendText("lya")),
+                    .up: FlickEntry(label: "ゅ", action: .sendText("lyu")),
+                    .left: FlickEntry(label: "ょ", action: .sendText("lyo"))
+                ],
+                dakutenEntries: nil,
+                handakutenEntries: nil,
+                width: 1.0,
+                kind: .kana
             ),
             .kana(
                 base: [
                     .center: ("ら", "ra"),
-                    .left: ("り", "ri"),
+                    .right: ("り", "ri"),
                     .up: ("る", "ru"),
-                    .right: ("れ", "re"),
-                    .down: ("ろ", "ro")
+                    .down: ("れ", "re"),
+                    .left: ("ろ", "ro")
                 ]
             )
         ]
 
         let row4: [FlickKeyModel] = [
-            .functional(label: "小書", action: .transformSmall),
-            .kana(
-                base: [
-                    .center: ("ん", "nn"),
-                    .left: ("わ", "wa"),
-                    .up: ("ー", "-"),
-                    .right: ("〜", "~"),
-                    .down: ("を", "wo")
+            FlickKeyModel(
+                entries: [
+                    .center: FlickEntry(label: "小", action: .transformSmall),
+                    .up: FlickEntry(label: "小", action: .transformSmall),
+                    .left: FlickEntry(label: "゛", action: .applyDakuten),
+                    .right: FlickEntry(label: "゜", action: .applyHandakuten)
                 ],
-                small: [
-                    .left: ("ゎ", "xwa")
-                ]
+                smallEntries: nil,
+                dakutenEntries: nil,
+                handakutenEntries: nil,
+                width: 1.0,
+                kind: .functional
             ),
             .kana(
                 base: [
-                    .center: ("、", "、"),
-                    .left: ("？", "?"),
-                    .up: ("！", "!"),
-                    .right: ("…", "…"),
-                    .down: ("。", "。")
+                    .center: ("わ", "wa"),
+                    .right: ("を", "wo"),
+                    .up: ("ん", "nn"),
+                    .down: ("ゎ", "xwa"),
+                    .left: ("ー", "ー")
+                ],
+                small: [
+                    .center: ("ゎ", "xwa")
                 ]
+            ),
+            FlickKeyModel(
+                entries: [
+                    .center: FlickEntry(label: "、", action: .sendText("、")),
+                    .right: FlickEntry(label: "。", action: .sendText("。")),
+                    .up: FlickEntry(label: "？", action: .sendText("?")),
+                    .down: FlickEntry(label: "！", action: .sendText("!")),
+                    .left: FlickEntry(label: "…", action: .sendText("…"))
+                ],
+                smallEntries: nil,
+                dakutenEntries: nil,
+                handakutenEntries: nil,
+                width: 1.0,
+                kind: .functional
             )
         ]
 
