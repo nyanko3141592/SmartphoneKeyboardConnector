@@ -55,22 +55,104 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 12) {
-                mainContent
-                    .padding(.top, 35) // topBarの下に適切なマージンを追加
-                if selectedMode != .keyboard {
-                    Spacer()
+        ZStack {
+            // メインコンテンツ
+            ScrollView {
+                VStack(spacing: 12) {
+                    mainContent
+                        .padding(.top, 60) // 設定ボタンエリア分のスペース
                 }
+                .padding(.bottom, selectedMode == .keyboard || selectedMode == .flick ? 250 : 16)
             }
-            .padding(.bottom, 8)
-            .navigationBarHidden(true)
-        }
-        .safeAreaInset(edge: .top) {
-            topBar
+
+            // 右上の設定ボタンとステータス（最小限のUI）
+            VStack {
+                HStack {
+                    Spacer()
+
+                    // 接続ステータスインジケーター（小さく控えめに）
+                    if !bleManager.isConnected {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text("未接続")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                    }
+
+                    // 設定メニューボタン
+                    Menu {
+                        // モード切り替えセクション
+                        Section("モード") {
+                            ForEach(InputMode.allCases) { mode in
+                                Button {
+                                    selectedMode = mode
+                                } label: {
+                                    Label(mode.label, systemImage: mode.systemImage)
+                                    if selectedMode == mode {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        // 接続セクション
+                        Section("接続") {
+                            if bleManager.isConnected {
+                                Label(bleManager.statusMessage, systemImage: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Button("切断") {
+                                    bleManager.disconnect()
+                                }
+                                Button("デバイス再選択") {
+                                    showDeviceList = true
+                                }
+                            } else {
+                                Button("デバイスをスキャン") {
+                                    showDeviceList = true
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        // デバッグセクション
+                        Section("デバッグ") {
+                            Toggle("デバッグモード", isOn: $bleManager.isDebugEnabled)
+                            Button("ログを表示") {
+                                isDebugModalPresented = true
+                            }
+                            .disabled(!bleManager.isDebugEnabled || bleManager.debugLogs.isEmpty)
+                        }
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .overlay(
+                                // 接続状態を示す小さなバッジ
+                                Circle()
+                                    .fill(bleManager.isConnected ? Color.green : Color.clear)
+                                    .frame(width: 10, height: 10)
+                                    .offset(x: 14, y: -14)
+                            )
+                    }
+                }
+                .padding(.horizontal, 12)
                 .padding(.top, 8)
-                .padding(.bottom, 4)
-                .background(.ultraThinMaterial, ignoresSafeAreaEdges: .top)
+
+                Spacer()
+            }
         }
         .toolbar { keyboardToolbar }
         .sheet(isPresented: $showDeviceList) {
@@ -106,95 +188,13 @@ struct ContentView: View {
         }
     }
 
-    private var topBar: some View {
-        HStack(spacing: 12) {
-            Picker(selection: $selectedMode) {
-                ForEach(InputMode.allCases) { mode in
-                    Image(systemName: mode.systemImage)
-                        .tag(mode)
-                        .accessibilityLabel(mode.label)
-                }
-            } label: {
-                Image(systemName: "square.grid.2x2")
-                    .accessibilityLabel("入力モード")
-            }
-            .pickerStyle(.menu)
-
-            Spacer()
-
-            debugMenu
-            connectionStatusMenu
-        }
-        .padding(.horizontal)
-    }
-
-    private var debugMenu: some View {
-        Menu {
-            Toggle("デバッグモード", isOn: $bleManager.isDebugEnabled)
-            Button("ログを表示") {
-                isDebugModalPresented = true
-            }
-            .disabled(!bleManager.isDebugEnabled || bleManager.debugLogs.isEmpty)
-            Button("ログをクリア", role: .destructive) {
-                bleManager.clearDebugLogs()
-            }
-            .disabled(bleManager.debugLogs.isEmpty)
-        } label: {
-            Image(systemName: "ladybug.fill")
-                .foregroundColor(bleManager.isDebugEnabled ? .blue : .primary)
-                .accessibilityLabel("デバッグ")
-        }
-    }
-
-    private var connectionStatusMenu: some View {
-        Menu {
-            if bleManager.isConnected {
-                Button("Disconnect") {
-                    bleManager.disconnect()
-                }
-                Button("デバイスを再選択") {
-                    showDeviceList = true
-                }
-            } else {
-                Button("デバイスをスキャン") {
-                    showDeviceList = true
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(bleManager.isConnected ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(bleManager.isConnected ? "接続中" : "未接続")
-                        .font(.footnote)
-                        .fontWeight(.semibold)
-                    Text(bleManager.statusMessage)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: 140, alignment: .leading)
-                }
-
-                Image(systemName: "chevron.down")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-        }
-    }
 
 
     private var mainContent: some View {
-        VStack(spacing: selectedMode == .keyboard ? 4 : 12) {
+        VStack(spacing: 12) {
             modeSpecificContent
                 .padding(.horizontal)
         }
-        .frame(minHeight: selectedMode == .keyboard ? 30 : 100)
     }
 
     @ViewBuilder
@@ -212,11 +212,7 @@ struct ContentView: View {
     }
 
     private var textInputSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("入力")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
+        VStack(spacing: 12) {
             HStack(spacing: 8) {
                 TextField("ここに入力", text: $inputText)
                     .textFieldStyle(.roundedBorder)
@@ -267,56 +263,57 @@ struct ContentView: View {
                 }
 
     private var keyboardSection: some View {
-        VStack(spacing: 10) {
-            Text("キーボードモード")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
+        EmptyView() // キーボードモードでは説明不要、画面を最大限活用
     }
 
     private var flickSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("フリックモード")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Text("下部のフリックキーボードからひらがなに対応するローマ字を送信します。中央タップで基本音、フリックで派生音/記号を選択できます。")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-
+        Group {
             if !bleManager.isConnected {
-                Text("デバイス未接続のため送信は保留されます。接続後に自動で反映されます。")
-                    .font(.caption2)
-                    .foregroundColor(.orange)
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("デバイス未接続")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(Color.orange.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                EmptyView()
             }
         }
     }
 
     private var mouseSection: some View {
-        VStack(spacing: 0) {
-            // 上部の余白と設定エリア
-            VStack(spacing: 8) {
+        VStack(spacing: 16) {
+            // 設定エリア（コンパクトに）
+            VStack(spacing: 10) {
                 HStack {
-                    Text("カーソル速度")
+                    Label("カーソル速度", systemImage: "speedometer")
                         .font(.caption)
+                        .foregroundColor(.primary)
+                    Spacer()
                     Slider(value: $trackpadSensitivity, in: 0.4...2.5, step: 0.1)
+                        .frame(maxWidth: 200)
                     Text(String(format: "%.1fx", trackpadSensitivity))
                         .font(.caption)
                         .foregroundColor(.secondary)
-                        .frame(width: 35)
+                        .frame(width: 40)
                 }
 
                 Toggle(isOn: $tapToClickEnabled) {
-                    Text("タップで左クリック")
+                    Label("タップで左クリック", systemImage: "hand.tap.fill")
                         .font(.caption)
                 }
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
+            .padding()
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            Spacer()
-
-            // 下部に集中した操作エリア
+            // 操作エリア
             VStack(spacing: 12) {
                 // トラックパッド
                 HStack(spacing: 12) {
