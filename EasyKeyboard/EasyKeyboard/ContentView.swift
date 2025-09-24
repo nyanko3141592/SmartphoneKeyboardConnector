@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
     @State private var isDebugModalPresented = false
+    @State private var isSettingsPresented = false
 
     private static let logDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -57,12 +58,19 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             // メインコンテンツ
-            ScrollView {
-                VStack(spacing: 12) {
-                    mainContent
-                        .padding(.top, 60) // 設定ボタンエリア分のスペース
+            if selectedMode == .mouse {
+                // マウスモードでは全画面トラックパッド
+                mouseSection
+                    .ignoresSafeArea(.all)
+            } else {
+                // 他のモードでは通常のScrollView
+                ScrollView {
+                    VStack(spacing: 12) {
+                        mainContent
+                            .padding(.top, 60) // 設定ボタンエリア分のスペース
+                    }
+                    .padding(.bottom, selectedMode == .keyboard || selectedMode == .flick ? 250 : 16)
                 }
-                .padding(.bottom, selectedMode == .keyboard || selectedMode == .flick ? 250 : 16)
             }
 
             // 右上の設定ボタンとステータス（最小限のUI）
@@ -132,6 +140,15 @@ struct ContentView: View {
                             }
                             .disabled(!bleManager.isDebugEnabled || bleManager.debugLogs.isEmpty)
                         }
+
+                        Divider()
+
+                        // 設定セクション
+                        Section("設定") {
+                            Button("詳細設定") {
+                                isSettingsPresented = true
+                            }
+                        }
                     } label: {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 20))
@@ -160,6 +177,13 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isDebugModalPresented) {
             DebugLogView(bleManager: bleManager, isPresented: $isDebugModalPresented)
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsView(
+                trackpadSensitivity: $trackpadSensitivity,
+                tapToClickEnabled: $tapToClickEnabled,
+                isPresented: $isSettingsPresented
+            )
         }
         .safeAreaInset(edge: .bottom) {
             Group {
@@ -288,35 +312,10 @@ struct ContentView: View {
     }
 
     private var mouseSection: some View {
-        VStack(spacing: 16) {
-            // 設定エリア（コンパクトに）
-            VStack(spacing: 10) {
-                HStack {
-                    Label("カーソル速度", systemImage: "speedometer")
-                        .font(.caption)
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Slider(value: $trackpadSensitivity, in: 0.4...2.5, step: 0.1)
-                        .frame(maxWidth: 200)
-                    Text(String(format: "%.1fx", trackpadSensitivity))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .frame(width: 40)
-                }
-
-                Toggle(isOn: $tapToClickEnabled) {
-                    Label("タップで左クリック", systemImage: "hand.tap.fill")
-                        .font(.caption)
-                }
-            }
-            .padding()
-            .background(Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-
-            // 操作エリア
-            VStack(spacing: 12) {
-                // トラックパッド
-                HStack(spacing: 12) {
+        GeometryReader { geometry in
+            ZStack {
+                // トラックパッドエリア（真の全画面）
+                HStack(spacing: 0) {
                     TrackpadSurface(
                         sensitivity: trackpadSensitivity,
                         tapToClick: tapToClickEnabled,
@@ -335,7 +334,7 @@ struct ContentView: View {
                             bleManager.sendMouseClick(.right)
                         }
                     )
-                    .frame(maxWidth: .infinity, maxHeight: 300)
+                    .frame(width: geometry.size.width - 50, height: geometry.size.height)
 
                     ScrollStrip(
                         sensitivity: trackpadSensitivity,
@@ -343,45 +342,161 @@ struct ContentView: View {
                             bleManager.sendMouseScroll(dy: delta)
                         }
                     )
-                    .frame(width: 52)
-                    .frame(maxWidth: nil, maxHeight: 300)
+                    .frame(width: 50, height: geometry.size.height)
                 }
-                .padding(.horizontal)
 
-                // クリックボタン
-                HStack(spacing: 16) {
-                    Button {
-                        bleManager.sendMouseClick(.left)
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: "cursorarrow.click")
-                                .font(.title2)
-                            Text("左クリック")
-                                .font(.caption)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!bleManager.isConnected)
+                // 設定ボタンエリア（マウスモード時は右上に表示）
+                VStack {
+                    HStack {
+                        Spacer()
 
-                    Button {
-                        bleManager.sendMouseClick(.right)
-                    } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: "cursorarrow.rays")
-                                .font(.title2)
-                            Text("右クリック")
-                                .font(.caption)
+                        // 接続ステータスインジケーター（小さく控えめに）
+                        if !bleManager.isConnected {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.orange)
+                                    .frame(width: 8, height: 8)
+                                Text("未接続")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+
+                        // 設定メニューボタン
+                        Menu {
+                            // モード切り替えセクション
+                            Section("モード") {
+                                ForEach(InputMode.allCases) { mode in
+                                    Button {
+                                        selectedMode = mode
+                                    } label: {
+                                        Label(mode.label, systemImage: mode.systemImage)
+                                        if selectedMode == mode {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+
+                            Divider()
+
+                            // 接続セクション
+                            Section("接続") {
+                                if bleManager.isConnected {
+                                    Label(bleManager.statusMessage, systemImage: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Button("切断") {
+                                        bleManager.disconnect()
+                                    }
+                                    Button("デバイス再選択") {
+                                        showDeviceList = true
+                                    }
+                                } else {
+                                    Button("デバイスをスキャン") {
+                                        showDeviceList = true
+                                    }
+                                }
+                            }
+
+                            Divider()
+
+                            // デバッグセクション
+                            Section("デバッグ") {
+                                Toggle("デバッグモード", isOn: $bleManager.isDebugEnabled)
+                                Button("ログを表示") {
+                                    isDebugModalPresented = true
+                                }
+                                .disabled(!bleManager.isDebugEnabled || bleManager.debugLogs.isEmpty)
+                            }
+
+                            Divider()
+
+                            // 設定セクション
+                            Section("設定") {
+                                Button("詳細設定") {
+                                    isSettingsPresented = true
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                                .overlay(
+                                    // 接続状態を示す小さなバッジ
+                                    Circle()
+                                        .fill(bleManager.isConnected ? Color.green : Color.clear)
+                                        .frame(width: 10, height: 10)
+                                        .offset(x: 14, y: -14)
+                                )
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(!bleManager.isConnected)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+
+                    Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+
+                // フローティングクリックボタン（下部中央に配置）
+                VStack {
+                    Spacer()
+
+                    HStack(spacing: 12) {
+                        Button {
+                            bleManager.sendMouseClick(.left)
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: "cursorarrow.click")
+                                    .font(.system(size: 16))
+                                Text("左")
+                                    .font(.caption2)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .clipShape(Circle())
+                        .disabled(!bleManager.isConnected)
+
+                        Button {
+                            bleManager.sendMouseClick(.middle)
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: "circle.fill")
+                                    .font(.system(size: 16))
+                                Text("中")
+                                    .font(.caption2)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(.bordered)
+                        .clipShape(Circle())
+                        .disabled(!bleManager.isConnected)
+
+                        Button {
+                            bleManager.sendMouseClick(.right)
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: "cursorarrow.rays")
+                                    .font(.system(size: 16))
+                                Text("右")
+                                    .font(.caption2)
+                            }
+                            .frame(width: 50, height: 50)
+                        }
+                        .buttonStyle(.bordered)
+                        .clipShape(Circle())
+                        .disabled(!bleManager.isConnected)
+                    }
+                    .padding(.bottom, 50)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.horizontal, 12)
+                }
             }
         }
     }
@@ -1099,6 +1214,41 @@ struct DeviceListView: View {
         }
         .onDisappear {
             bleManager.stopScanning()
+        }
+    }
+}
+
+struct SettingsView: View {
+    @Binding var trackpadSensitivity: Double
+    @Binding var tapToClickEnabled: Bool
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("マウス設定") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label("カーソル速度", systemImage: "speedometer")
+                            Spacer()
+                            Text(String(format: "%.1fx", trackpadSensitivity))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $trackpadSensitivity, in: 0.4...2.5, step: 0.1)
+                    }
+
+                    Toggle("タップでクリック", isOn: $tapToClickEnabled)
+                }
+            }
+            .navigationTitle("詳細設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完了") {
+                        isPresented = false
+                    }
+                }
+            }
         }
     }
 }
