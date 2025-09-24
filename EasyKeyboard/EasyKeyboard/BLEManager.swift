@@ -13,6 +13,28 @@ class BLEManager: NSObject, ObservableObject {
 
     // MARK: - Properties
 
+    struct DebugLogEntry: Identifiable {
+        let id = UUID()
+        let timestamp: Date
+        let tag: String
+        let message: String
+    }
+
+    @Published var isDebugEnabled = false {
+        didSet {
+            if isDebugEnabled {
+                appendDebugLog(tag: "INFO", message: "Debug mode enabled")
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.debugLogs.removeAll()
+                }
+            }
+        }
+    }
+    @Published var debugLogs: [DebugLogEntry] = []
+
+    private let maxDebugEntries = 200
+
     @Published var isScanning = false
     @Published var isConnected = false
     @Published var discoveredDevices: [CBPeripheral] = []
@@ -91,6 +113,7 @@ class BLEManager: NSObject, ObservableObject {
 
     func sendText(_ text: String) {
         logger.info("Attempting to send text: \(text)")
+        appendDebugLog(tag: "SEND", message: text)
 
         guard let peripheral = connectedDevice else {
             logger.error("Cannot send text: no connected device")
@@ -180,7 +203,41 @@ class BLEManager: NSObject, ObservableObject {
         return true
     }
 
+    @discardableResult
+    func sendJapaneseInputMode() -> Bool {
+        guard isConnected else { return false }
+        guard textCharacteristic != nil else { return false }
+        sendText("CMD:KEY:IME_JA\n")
+        return true
+    }
+
+    func clearDebugLogs() {
+        DispatchQueue.main.async { [weak self] in
+            self?.debugLogs.removeAll()
+        }
+    }
+
+    private func appendDebugLog(tag: String, message: String) {
+        guard isDebugEnabled else { return }
+        let entry = DebugLogEntry(timestamp: Date(), tag: tag, message: sanitizeForLog(message))
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            debugLogs.append(entry)
+            if debugLogs.count > maxDebugEntries {
+                debugLogs.removeFirst(debugLogs.count - maxDebugEntries)
+            }
+        }
+    }
+
+    private func sanitizeForLog(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+    }
+
     private func sendMouseCommand(_ command: String) {
+        appendDebugLog(tag: "MOUSE", message: command)
         let payload = "CMD:MOUSE:\(command)\n"
         sendText(payload)
     }
@@ -204,6 +261,8 @@ class BLEManager: NSObject, ObservableObject {
     func sendUnicode(_ text: String) {
         guard isConnected else { return }
         guard !text.isEmpty else { return }
+
+        appendDebugLog(tag: "UNICODE", message: text)
 
         let sequences = text.unicodeScalars.map { scalar in
             String(format: "U+%04X  \n", scalar.value)

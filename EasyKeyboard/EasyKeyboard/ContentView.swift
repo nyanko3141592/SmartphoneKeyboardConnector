@@ -15,10 +15,17 @@ struct ContentView: View {
     @FocusState private var isTextFieldFocused: Bool
     @State private var parsedLayout: ParsedKeyboardLayout?
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
-    @State private var selectedMode: InputMode = .text
+    @State private var selectedMode: InputMode = .keyboard
     @State private var trackpadSensitivity: Double = 1.4
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
+    @State private var isDebugModalPresented = false
+
+    private static let logDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
 
     enum InputMode: String, CaseIterable, Identifiable {
         case text
@@ -69,6 +76,9 @@ struct ContentView: View {
         .sheet(isPresented: $showDeviceList) {
             DeviceListView(bleManager: bleManager, isPresented: $showDeviceList)
         }
+        .sheet(isPresented: $isDebugModalPresented) {
+            DebugLogView(bleManager: bleManager, isPresented: $isDebugModalPresented)
+        }
         .safeAreaInset(edge: .bottom) {
             Group {
                 switch selectedMode {
@@ -89,23 +99,51 @@ struct ContentView: View {
         .onChange(of: selectedMode) { _, newMode in
             handleModeChange(newMode)
         }
+        .onChange(of: bleManager.isConnected) { _, isConnected in
+            if isConnected {
+                ensureJapaneseImeForFlickIfPossible()
+            }
+        }
     }
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Picker("モード", selection: $selectedMode) {
+            Picker(selection: $selectedMode) {
                 ForEach(InputMode.allCases) { mode in
-                    Label(mode.label, systemImage: mode.systemImage)
+                    Image(systemName: mode.systemImage)
                         .tag(mode)
+                        .accessibilityLabel(mode.label)
                 }
+            } label: {
+                Image(systemName: "square.grid.2x2")
+                    .accessibilityLabel("入力モード")
             }
             .pickerStyle(.menu)
 
             Spacer()
 
+            debugMenu
             connectionStatusMenu
         }
         .padding(.horizontal)
+    }
+
+    private var debugMenu: some View {
+        Menu {
+            Toggle("デバッグモード", isOn: $bleManager.isDebugEnabled)
+            Button("ログを表示") {
+                isDebugModalPresented = true
+            }
+            .disabled(!bleManager.isDebugEnabled || bleManager.debugLogs.isEmpty)
+            Button("ログをクリア", role: .destructive) {
+                bleManager.clearDebugLogs()
+            }
+            .disabled(bleManager.debugLogs.isEmpty)
+        } label: {
+            Image(systemName: "ladybug.fill")
+                .foregroundColor(bleManager.isDebugEnabled ? .blue : .primary)
+                .accessibilityLabel("デバッグ")
+        }
     }
 
     private var connectionStatusMenu: some View {
@@ -149,6 +187,7 @@ struct ContentView: View {
             .clipShape(Capsule())
         }
     }
+
 
     private var mainContent: some View {
         VStack(spacing: selectedMode == .keyboard ? 4 : 12) {
@@ -438,11 +477,20 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 isTextFieldFocused = true
             }
-        case .keyboard, .flick, .mouse:
+        case .keyboard, .mouse:
             isTextFieldFocused = false
+        case .flick:
+            isTextFieldFocused = false
+            ensureJapaneseImeForFlickIfPossible()
         }
 
         flickCommitHistory = nil
+    }
+
+    private func ensureJapaneseImeForFlickIfPossible() {
+        guard selectedMode == .flick else { return }
+        guard bleManager.isConnected else { return }
+        bleManager.sendJapaneseInputMode()
     }
 
     private func commitText() {
@@ -1058,6 +1106,95 @@ struct DeviceListView: View {
     }
 }
 
+struct DebugLogView: View {
+    @ObservedObject var bleManager: BLEManager
+    @Binding var isPresented: Bool
+
+    private static let logDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                if bleManager.debugLogs.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("デバッグログが空です")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("デバッグモードを有効にして操作すると、ここにログが表示されます")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 4) {
+                                ForEach(bleManager.debugLogs) { entry in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text(Self.logDateFormatter.string(from: entry.timestamp))
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundColor(.secondary)
+                                            Text("[\(entry.tag)]")
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundColor(.blue)
+                                                .fontWeight(.medium)
+                                            Spacer()
+                                        }
+                                        Text(entry.message)
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 6)
+                                    .id(entry.id)
+                                    Divider()
+                                        .opacity(0.3)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .onChange(of: bleManager.debugLogs.last?.id) { _, id in
+                            guard let id else { return }
+                            withAnimation {
+                                proxy.scrollTo(id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("デバッグログ")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("閉じる") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        bleManager.clearDebugLogs()
+                    } label: {
+                        Label("クリア", systemImage: "trash")
+                    }
+                    .disabled(bleManager.debugLogs.isEmpty)
+                }
+            }
+        }
+    }
+}
+
 #Preview {
     ContentView()
 }
+

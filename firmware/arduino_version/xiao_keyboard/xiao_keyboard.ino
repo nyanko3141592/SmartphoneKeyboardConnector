@@ -62,6 +62,7 @@ void sendKeycodeWithModifier(uint8_t modifier, uint8_t keycode);
 constexpr uint8_t KEYCODE_ARROW_LEFT = 0x50;
 constexpr uint8_t KEYCODE_ARROW_RIGHT = 0x4F;
 constexpr uint8_t KEYCODE_Z = 0x1D;
+constexpr uint8_t KEYCODE_LANG1 = 0x90; // Kana key switches host to Japanese input mode
 constexpr uint8_t MODIFIER_COMMAND = 0x08; // Left GUI acts as Command key on macOS
 
 void setup() {
@@ -297,6 +298,8 @@ void handleKeyCommand(const char* payload) {
         sendKeycode(KEYCODE_ARROW_LEFT);
     } else if (strcasecmp(payload, "RIGHT") == 0) {
         sendKeycode(KEYCODE_ARROW_RIGHT);
+    } else if (strcasecmp(payload, "IME_JA") == 0) {
+        sendKeycode(KEYCODE_LANG1);
     } else if (strcasecmp(payload, "UNDO") == 0) {
         sendKeycodeWithModifier(MODIFIER_COMMAND, KEYCODE_Z);
     }
