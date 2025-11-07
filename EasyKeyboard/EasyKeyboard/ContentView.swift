@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import Combine
 
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
@@ -18,6 +19,7 @@ struct ContentView: View {
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @State private var selectedMode: InputMode = .keyboard
     @State private var trackpadSensitivity: Double = 1.4
+    @State private var opticalFlowSensitivity: Double = 0.10
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
     @State private var isDebugModalPresented = false
@@ -240,6 +242,9 @@ struct ContentView: View {
                 ensureJapaneseImeForFlickIfPossible()
             }
         }
+        .onReceive(opticalFlowManager.$latestReading) { reading in
+            handleOpticalFlow(reading)
+        }
         }
     }
 
@@ -370,7 +375,19 @@ struct ContentView: View {
     }
 
     private var mouseSection: some View {
-        MouseModeView(flowManager: opticalFlowManager)
+        MouseModeView(
+            flowManager: opticalFlowManager,
+            sensitivity: $opticalFlowSensitivity,
+            onLeftClick: {
+                bleManager.sendMouseClick(.left)
+            },
+            onMiddleClick: {
+                bleManager.sendMouseClick(.middle)
+            },
+            onRightClick: {
+                bleManager.sendMouseClick(.right)
+            }
+        )
     }
 
     private var keyboardToolbar: some ToolbarContent {
@@ -646,6 +663,23 @@ struct ContentView: View {
         }
 
         flickCommitHistory = nil
+    }
+
+    private func handleOpticalFlow(_ reading: OpticalFlowManager.FlowReading) {
+        guard selectedMode == .mouse else { return }
+        guard bleManager.isConnected else { return }
+
+        let noiseThreshold: Double = 1.0
+        if reading.magnitude < noiseThreshold {
+            return
+        }
+
+        let gain = opticalFlowSensitivity
+        let dx = Int((reading.dx * gain).rounded())
+        let dy = Int((reading.dy * gain).rounded())
+        if dx != 0 || dy != 0 {
+            bleManager.sendMouseMove(dx: dx, dy: dy)
+        }
     }
 
     private func ensureJapaneseImeForFlickIfPossible() {

@@ -2,6 +2,10 @@ import SwiftUI
 
 struct MouseModeView: View {
     @ObservedObject var flowManager: OpticalFlowManager
+    @Binding var sensitivity: Double
+    let onLeftClick: () -> Void
+    let onMiddleClick: () -> Void
+    let onRightClick: () -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -18,14 +22,12 @@ struct MouseModeView: View {
 
             FlowReadoutView(reading: flowManager.latestReading)
 
+            FlowSensitivityControl(sensitivity: $sensitivity)
+
             FlowHistoryView(readings: flowManager.recentReadings)
                 .frame(height: 110)
 
-            Text("※ 現段階では検出した変量のみを表示し、XIAOには送信しません")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, 4)
+            clickControls
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -64,6 +66,19 @@ struct MouseModeView: View {
         }
     }
 
+    private var clickControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("クリック操作")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                ClickButton(title: "左", systemImage: "cursorarrow.click", action: onLeftClick)
+                ClickButton(title: "中", systemImage: "circle", action: onMiddleClick)
+                ClickButton(title: "右", systemImage: "contextualmenu.and.cursorarrow", action: onRightClick)
+            }
+        }
+    }
+
     private var statusIcon: String {
         switch flowManager.status {
         case .idle: return "pause.circle"
@@ -82,6 +97,51 @@ struct MouseModeView: View {
         case .requestingPermission: return .yellow
         case .idle: return .secondary
         }
+    }
+}
+
+
+private struct FlowSensitivityControl: View {
+    @Binding var sensitivity: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("感度 (光学フロー)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(sensitivity, format: .number.precision(.fractionLength(2)))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $sensitivity, in: 0.01...1.0, step: 0.01)
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct ClickButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                Text(title)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 

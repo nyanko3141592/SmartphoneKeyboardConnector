@@ -185,11 +185,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
             defer { device.unlockForConfiguration() }
 
             if enabled {
-                if device.hasTorch, device.isTorchModeSupported(.on) {
-                    let level = min(preferredTorchLevel, AVCaptureDevice.maxAvailableTorchLevel)
-                    try? device.setTorchModeOn(level: level)
-                }
-
+                configureTorch(for: device, turnOn: true)
                 if device.isExposureModeSupported(.custom) {
                     let currentDuration = device.exposureDuration
                     let currentISO = device.iso
@@ -200,9 +196,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
 
                 device.isSubjectAreaChangeMonitoringEnabled = false
             } else {
-                if device.hasTorch, device.isTorchModeSupported(.off) {
-                    device.torchMode = .off
-                }
+                configureTorch(for: device, turnOn: false)
                 if device.isExposureModeSupported(.continuousAutoExposure) {
                     device.exposureMode = .continuousAutoExposure
                 }
@@ -210,6 +204,18 @@ final class OpticalFlowManager: NSObject, ObservableObject {
             }
         } catch {
             handle(error: error)
+        }
+    }
+
+    private func configureTorch(for device: AVCaptureDevice, turnOn: Bool) {
+        guard device.hasTorch else { return }
+        if turnOn {
+            if device.isTorchModeSupported(.on) {
+                let level = min(preferredTorchLevel, AVCaptureDevice.maxAvailableTorchLevel)
+                try? device.setTorchModeOn(level: level)
+            }
+        } else if device.isTorchModeSupported(.off) {
+            device.torchMode = .off
         }
     }
 
@@ -257,7 +263,8 @@ extension OpticalFlowManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
 
             let inverted = SIMD2<Double>(Double(average.x), Double(-average.y))
-            smoothedVector = smoothedVector * (1.0 - smoothingFactor) + inverted * smoothingFactor
+            let corrected = SIMD2<Double>(-inverted.y, -inverted.x)
+            smoothedVector = smoothedVector * (1.0 - smoothingFactor) + corrected * smoothingFactor
             publish(vector: smoothedVector)
         } catch {
             handle(error: error)
