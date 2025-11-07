@@ -19,7 +19,8 @@ struct ContentView: View {
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @State private var selectedMode: InputMode = .keyboard
     @State private var trackpadSensitivity: Double = 1.4
-    @State private var opticalFlowSensitivity: Double = 0.10
+    @State private var opticalFlowSensitivity: Double = 0.03
+    @State private var opticalExposureLevel: Double = 0.30
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
     @State private var isDebugModalPresented = false
@@ -232,6 +233,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            loadOpticalSettings()
             handleOnAppear()
         }
         .onChange(of: selectedMode) { _, newMode in
@@ -244,6 +246,13 @@ struct ContentView: View {
         }
         .onReceive(opticalFlowManager.$latestReading) { reading in
             handleOpticalFlow(reading)
+        }
+        .onChange(of: opticalExposureLevel) { _, newValue in
+            opticalFlowManager.setExposureLevel(newValue)
+            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.opticalExposure)
+        }
+        .onChange(of: opticalFlowSensitivity) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.opticalSensitivity)
         }
         }
     }
@@ -378,6 +387,7 @@ struct ContentView: View {
         MouseModeView(
             flowManager: opticalFlowManager,
             sensitivity: $opticalFlowSensitivity,
+            exposureLevel: $opticalExposureLevel,
             onLeftClick: {
                 bleManager.sendMouseClick(.left)
             },
@@ -386,6 +396,12 @@ struct ContentView: View {
             },
             onRightClick: {
                 bleManager.sendMouseClick(.right)
+            },
+            onScrollUp: {
+                bleManager.sendMouseScroll(dy: -6)
+            },
+            onScrollDown: {
+                bleManager.sendMouseScroll(dy: 6)
             }
         )
     }
@@ -642,6 +658,16 @@ struct ContentView: View {
         }
     }
 
+    private func loadOpticalSettings() {
+        let defaults = UserDefaults.standard
+        if let savedSensitivity = defaults.value(forKey: UserDefaultsKeys.opticalSensitivity) as? Double {
+            opticalFlowSensitivity = max(0.01, min(1.0, savedSensitivity))
+        }
+        if let savedExposure = defaults.value(forKey: UserDefaultsKeys.opticalExposure) as? Double {
+            opticalExposureLevel = max(0.0, min(1.0, savedExposure))
+        }
+    }
+
     private func handleModeChange(_ mode: InputMode) {
         switch mode {
         case .text:
@@ -653,6 +679,7 @@ struct ContentView: View {
             isTextFieldFocused = false
             if mode == .mouse {
                 opticalFlowManager.start()
+                opticalFlowManager.setExposureLevel(opticalExposureLevel)
             } else {
                 opticalFlowManager.stop()
             }
@@ -837,6 +864,11 @@ struct ContentView: View {
         }
         return chosen
     }
+}
+
+private enum UserDefaultsKeys {
+    static let opticalSensitivity = "ContentView.opticalFlowSensitivity"
+    static let opticalExposure = "ContentView.opticalExposure"
 }
 
 private struct FlickCommitHistory {
@@ -1252,20 +1284,27 @@ struct DeviceListView: View {
                     .frame(maxHeight: .infinity)
                 } else {
                     List(bleManager.discoveredDevices, id: \.identifier) { device in
+                        let isRemembered = bleManager.isRememberedDevice(device)
                         Button(action: {
                             bleManager.connect(to: device)
                             isPresented = false
                         }) {
                             HStack {
-                                Image(systemName: "keyboard")
-                                    .foregroundColor(.blue)
+                                Image(systemName: isRemembered ? "clock" : "keyboard")
+                                    .foregroundColor(isRemembered ? .orange : .blue)
 
                                 VStack(alignment: .leading) {
                                     Text(device.name ?? "Unknown Device")
                                         .font(.headline)
+                                        .foregroundColor(isRemembered ? .primary : .primary)
                                     Text(device.identifier.uuidString)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
+                                    if isRemembered {
+                                        Label("前回接続", systemImage: "clock.badge.checkmark")
+                                            .font(.caption2)
+                                            .foregroundColor(.orange)
+                                    }
                                 }
 
                                 Spacer()
@@ -1273,7 +1312,9 @@ struct DeviceListView: View {
                                 Image(systemName: "chevron.right")
                                     .foregroundColor(.gray)
                             }
+                            .padding(.vertical, 4)
                         }
+                        .listRowBackground(isRemembered ? Color.orange.opacity(0.12) : Color.clear)
                     }
                 }
             }

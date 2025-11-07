@@ -58,6 +58,7 @@ class BLEManager: NSObject, ObservableObject {
     private let unicodeSendQueue = DispatchQueue(label: "com.easykeyboard.unicodeSendQueue")
     private var unicodeNextSendTime = DispatchTime.now()
     private let unicodeSendInterval = DispatchTimeInterval.milliseconds(200)
+    private let lastPeripheralKey = "BLEManager.lastConnectedPeripheralID"
 
     // MARK: - Service and Characteristic UUIDs
     // Nordic UART Service (NUS) - ファームウェアと一致させる
@@ -185,6 +186,11 @@ class BLEManager: NSObject, ObservableObject {
         guard isConnected else { return }
         guard dy != 0 else { return }
         sendMouseCommand("SCROLL:\(dy)")
+    }
+
+    func isRememberedDevice(_ peripheral: CBPeripheral) -> Bool {
+        guard let savedID = storedPeripheralID() else { return false }
+        return savedID == peripheral.identifier
     }
 
     @discardableResult
@@ -324,16 +330,22 @@ extension BLEManager: CBCentralManagerDelegate {
         }
 
         // "Xiao" を含むデバイス名、または特定のサービスUUIDを持つデバイスを追加
+        var didInsert = false
         if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
             if name.lowercased().contains("xiao") || name.lowercased().contains("keyboard") ||
                name.lowercased().contains("nordic") || services.contains(serviceUUID) {
                 discoveredDevices.append(peripheral)
+                didInsert = true
                 logger.info("✅ Added to list: \(name)")
             } else if name != "Unknown" {
-                // デバッグ用：すべての名前付きデバイスを表示
                 discoveredDevices.append(peripheral)
+                didInsert = true
                 logger.info("📱 Added device (debug): \(name)")
             }
+        }
+
+        if didInsert || peripheral.identifier == storedPeripheralID() {
+            promoteSavedPeripheralIfNeeded(peripheral)
         }
     }
 
@@ -344,6 +356,7 @@ extension BLEManager: CBCentralManagerDelegate {
         statusMessage = "Connected"
         peripheral.delegate = self
         peripheral.discoverServices([serviceUUID])
+        persistLastPeripheralID(peripheral.identifier)
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -366,12 +379,6 @@ extension BLEManager: CBCentralManagerDelegate {
         textCharacteristic = nil
         statusCharacteristic = nil
 
-        // Auto-reconnect if it was unexpected
-        if error != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                self?.connect(to: peripheral)
-            }
-        }
     }
 }
 
@@ -452,5 +459,26 @@ extension BLEManager: CBPeripheralDelegate {
             logger.info("Status update: \(status)")
             statusMessage = status
         }
+    }
+}
+
+// MARK: - Auto Reconnect Helpers
+
+private extension BLEManager {
+    func persistLastPeripheralID(_ uuid: UUID) {
+        UserDefaults.standard.set(uuid.uuidString, forKey: lastPeripheralKey)
+    }
+
+    func storedPeripheralID() -> UUID? {
+        guard let uuidString = UserDefaults.standard.string(forKey: lastPeripheralKey) else { return nil }
+        return UUID(uuidString: uuidString)
+    }
+
+    func promoteSavedPeripheralIfNeeded(_ peripheral: CBPeripheral) {
+        guard let savedID = storedPeripheralID(), savedID == peripheral.identifier else { return }
+        guard let index = discoveredDevices.firstIndex(where: { $0.identifier == peripheral.identifier }) else { return }
+        let item = discoveredDevices.remove(at: index)
+        discoveredDevices.insert(item, at: 0)
+        logger.info("📌 Prioritized previously connected device: \(peripheral.name ?? "Unknown")")
     }
 }

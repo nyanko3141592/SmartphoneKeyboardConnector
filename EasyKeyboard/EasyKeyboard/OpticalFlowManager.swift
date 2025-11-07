@@ -37,6 +37,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     @Published private(set) var latestReading: FlowReading = .zero
     @Published private(set) var recentReadings: [FlowReading] = []
+    @Published private(set) var exposureLevel: Double = 0.2
 
     let captureSession = AVCaptureSession()
 
@@ -54,7 +55,15 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     private let smoothingFactor: Double = 0.25
     private let historyLimit = 30
     private let displayScale: Double = 120 // 値を見やすくするためのスケール
+    private let exposureDefaultsKey = "OpticalFlowManager.exposureLevel"
     private let preferredTorchLevel: Float = 0.8
+
+    override init() {
+        super.init()
+        if let saved = UserDefaults.standard.object(forKey: exposureDefaultsKey) as? Double {
+            exposureLevel = max(0.0, min(1.0, saved))
+        }
+    }
 
     func start() {
         requestCameraAccessIfNeeded { [weak self] granted in
@@ -104,6 +113,16 @@ final class OpticalFlowManager: NSObject, ObservableObject {
                 self.latestReading = .zero
                 self.recentReadings.removeAll()
             }
+        }
+    }
+
+    func setExposureLevel(_ level: Double) {
+        let clamped = max(0.0, min(1.0, level))
+        guard clamped != exposureLevel else { return }
+        exposureLevel = clamped
+        sessionQueue.async { [weak self] in
+            self?.applyExposureSetting()
+            UserDefaults.standard.set(clamped, forKey: exposureDefaultsKey)
         }
     }
 
@@ -186,13 +205,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
 
             if enabled {
                 configureTorch(for: device, turnOn: true)
-                if device.isExposureModeSupported(.custom) {
-                    let currentDuration = device.exposureDuration
-                    let currentISO = device.iso
-                    device.setExposureModeCustom(duration: currentDuration, iso: currentISO, completionHandler: nil)
-                } else if device.isExposureModeSupported(.locked) {
-                    device.exposureMode = .locked
-                }
+                applyExposureSettingLocked(device: device)
 
                 device.isSubjectAreaChangeMonitoringEnabled = false
             } else {
@@ -207,6 +220,39 @@ final class OpticalFlowManager: NSObject, ObservableObject {
         }
     }
 
+    private func applyExposureSetting() {
+        guard let device = activeDevice else { return }
+        guard device.isExposureModeSupported(.custom) else { return }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            applyExposureSettingLocked(device: device)
+        } catch {
+            handle(error: error)
+        }
+    }
+
+    private func applyExposureSettingLocked(device: AVCaptureDevice) {
+        guard device.isExposureModeSupported(.custom) else {
+            if device.isExposureModeSupported(.locked) {
+                device.exposureMode = .locked
+            }
+            return
+        }
+
+        let format = device.activeFormat
+        let minDurationSeconds = CMTimeGetSeconds(format.minExposureDuration)
+        let maxDurationSeconds = CMTimeGetSeconds(format.maxExposureDuration)
+        let targetSeconds = minDurationSeconds + (maxDurationSeconds - minDurationSeconds) * exposureLevel
+        let duration = CMTime(seconds: targetSeconds, preferredTimescale: 1_000_000_000)
+
+        let minISO = format.minISO
+        let maxISO = format.maxISO
+        let targetISO = minISO + (maxISO - minISO) * Float(exposureLevel)
+
+        device.setExposureModeCustom(duration: duration, iso: targetISO, completionHandler: nil)
+    }
+
     private func configureTorch(for device: AVCaptureDevice, turnOn: Bool) {
         guard device.hasTorch else { return }
         if turnOn {
@@ -217,6 +263,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
         } else if device.isTorchModeSupported(.off) {
             device.torchMode = .off
         }
+        
     }
 
     private func handle(error: Error) {
