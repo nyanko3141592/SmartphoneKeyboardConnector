@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var selectedMode: InputMode = .keyboard
     @State private var trackpadSensitivity: Double = 1.4
     @State private var opticalFlowSensitivity: Double = 0.03
-    @State private var opticalExposureLevel: Double = 0.30
+    @State private var opticalExposureLevel: Double = 0.03
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
     @State private var isDebugModalPresented = false
@@ -664,7 +664,7 @@ struct ContentView: View {
             opticalFlowSensitivity = max(0.01, min(1.0, savedSensitivity))
         }
         if let savedExposure = defaults.value(forKey: UserDefaultsKeys.opticalExposure) as? Double {
-            opticalExposureLevel = max(0.0, min(1.0, savedExposure))
+            opticalExposureLevel = max(0.0, min(0.1, savedExposure))
         }
     }
 

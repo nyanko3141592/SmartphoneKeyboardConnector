@@ -37,7 +37,8 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     @Published private(set) var latestReading: FlowReading = .zero
     @Published private(set) var recentReadings: [FlowReading] = []
-    @Published private(set) var exposureLevel: Double = 0.2
+    @Published private(set) var exposureLevel: Double = 0.03
+    @Published private(set) var peakMagnitude: Double = 1.0
 
     let captureSession = AVCaptureSession()
 
@@ -61,7 +62,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     override init() {
         super.init()
         if let saved = UserDefaults.standard.object(forKey: exposureDefaultsKey) as? Double {
-            exposureLevel = max(0.0, min(1.0, saved))
+            exposureLevel = max(0.0, min(0.1, saved))
         }
     }
 
@@ -117,12 +118,13 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     }
 
     func setExposureLevel(_ level: Double) {
-        let clamped = max(0.0, min(1.0, level))
+        let clamped = max(0.0, min(0.1, level))
         guard clamped != exposureLevel else { return }
         exposureLevel = clamped
         sessionQueue.async { [weak self] in
-            self?.applyExposureSetting()
-            UserDefaults.standard.set(clamped, forKey: exposureDefaultsKey)
+            guard let self else { return }
+            self.applyExposureSetting()
+            UserDefaults.standard.set(clamped, forKey: self.exposureDefaultsKey)
         }
     }
 
@@ -287,6 +289,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
             if self.recentReadings.count > self.historyLimit {
                 self.recentReadings.removeFirst(self.recentReadings.count - self.historyLimit)
             }
+            self.peakMagnitude = max(reading.magnitude, self.peakMagnitude * 0.92)
         }
     }
 }

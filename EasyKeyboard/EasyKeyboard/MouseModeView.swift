@@ -67,7 +67,7 @@ struct MouseModeView: View {
     private var cameraSection: some View {
         CameraPreviewView(session: flowManager.captureSession)
             .overlay(alignment: .center) {
-                FlowVectorOverlay(reading: flowManager.latestReading)
+            FlowVectorOverlay(reading: flowManager.latestReading, peakMagnitude: flowManager.peakMagnitude)
             }
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 18, x: 0, y: 8)
@@ -174,7 +174,7 @@ private struct ExposureControl: View {
             .buttonStyle(.plain)
 
             if isExpanded {
-                Slider(value: $exposure, in: 0.0...1.0, step: 0.01)
+                Slider(value: $exposure, in: 0.0...0.1, step: 0.005)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -294,18 +294,21 @@ private struct SectionHeader: View {
 
 private struct FlowVectorOverlay: View {
     let reading: OpticalFlowManager.FlowReading
+    let peakMagnitude: Double
 
     var body: some View {
         GeometryReader { geo in
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            let dx = CGFloat(reading.dx) * 1.2
-            let dy = CGFloat(reading.dy) * 1.2
+            let maxRadius = min(geo.size.width, geo.size.height) * 0.28
+            let scale = peakMagnitude > 0 ? maxRadius / CGFloat(peakMagnitude) : 1
+            let dx = CGFloat(reading.dx) * scale
+            let dy = CGFloat(reading.dy) * scale
 
             ZStack {
                 Circle()
                     .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .foregroundStyle(.white.opacity(0.6))
-                    .frame(width: geo.size.width * 0.6, height: geo.size.width * 0.6)
+                    .frame(width: maxRadius * 2, height: maxRadius * 2)
 
                 CrosshairShape()
                     .stroke(Color.white.opacity(0.7), lineWidth: 1)
