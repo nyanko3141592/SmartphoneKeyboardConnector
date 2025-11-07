@@ -21,8 +21,10 @@ struct MouseModeView: View {
             ExposureControl(exposure: $exposureLevel, isExpanded: $isExposureExpanded)
 
             SectionHeader(title: "デルタ")
-            FlowReadoutView(reading: flowManager.latestReading)
-            FlowSensitivityControl(sensitivity: $sensitivity, isExpanded: $isSensitivityExpanded)
+            VStack(spacing: 10) {
+                FlowReadoutView(reading: flowManager.latestReading)
+                FlowSensitivityControl(sensitivity: $sensitivity, isExpanded: $isSensitivityExpanded)
+            }
 
             SectionHeader(title: "ボタン")
             clickControls
@@ -114,36 +116,19 @@ private struct FlowSensitivityControl: View {
     @Binding var isExpanded: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(.spring()) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Label("感度 (光学フロー)", systemImage: "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    Text(sensitivity, format: .number.precision(.fractionLength(2)))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down")
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .animation(.spring(), value: isExpanded)
-                }
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                Slider(value: $sensitivity, in: 0.01...1.0, step: 0.01)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Slider(value: $sensitivity, in: 0.01...1.0, step: 0.01)
+        } label: {
+            HStack {
+                Label("感度", systemImage: "speedometer")
+                    .font(.caption)
+                Spacer()
+                Text(sensitivity, format: .number.precision(.fractionLength(2)))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .disclosureGroupStyle(CompactDisclosureStyle())
     }
 }
 
@@ -152,30 +137,38 @@ private struct ExposureControl: View {
     @Binding var isExpanded: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                withAnimation(.spring()) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Label("露出", systemImage: "sun.max")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    Text(exposure, format: .number.precision(.fractionLength(2)))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down")
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .animation(.spring(), value: isExpanded)
-                }
-                .padding(.vertical, 4)
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Slider(value: $exposure, in: 0.0...0.1, step: 0.005)
+        } label: {
+            HStack {
+                Label("露出", systemImage: "sun.max")
+                    .font(.caption)
+                Spacer()
+                Text(exposure, format: .number.precision(.fractionLength(3)))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+        }
+        .disclosureGroupStyle(CompactDisclosureStyle())
+    }
+}
 
-            if isExpanded {
-                Slider(value: $exposure, in: 0.0...0.1, step: 0.005)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+private struct CompactDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                configuration.label
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(configuration.isExpanded ? 180 : 0))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.spring()) { configuration.isExpanded.toggle() } }
+
+            if configuration.isExpanded {
+                configuration.content
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 12)
@@ -346,39 +339,32 @@ private struct FlowReadoutView: View {
     let reading: OpticalFlowManager.FlowReading
 
     var body: some View {
-        HStack(spacing: 12) {
-            FlowMetricCard(title: "ΔX", value: reading.dx, tint: .blue)
-            FlowMetricCard(title: "ΔY", value: reading.dy, tint: .purple)
-            FlowMetricCard(title: "|Δ|", value: reading.magnitude, tint: .green)
+        HStack(spacing: 8) {
+            DeltaChip(title: "ΔX", value: reading.dx, tint: .blue)
+            DeltaChip(title: "ΔY", value: reading.dy, tint: .purple)
+            DeltaChip(title: "|Δ|", value: reading.magnitude, tint: .green)
         }
+        .padding(10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-private struct FlowMetricCard: View {
+private struct DeltaChip: View {
     let title: String
     let value: Double
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 2) {
             Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value, format: .number.precision(.fractionLength(2)))
-                .font(.title3.monospacedDigit())
-                .foregroundStyle(.primary)
-            Text("px/frame")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            Text(value, format: .number.precision(.fractionLength(2)))
+                .font(.body.monospacedDigit())
+                .foregroundStyle(tint)
         }
-        .padding(12)
         .frame(maxWidth: .infinity)
-        .background(tint.opacity(0.12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
