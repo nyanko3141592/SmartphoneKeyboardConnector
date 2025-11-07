@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var isSettingsPresented = false
     @State private var trackpadOnLeft = true // 横持ちモードでの配置設定
     @State private var isLandscapeMode = false
+    @StateObject private var opticalFlowManager = OpticalFlowManager()
 
     private static let logDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -246,8 +247,35 @@ struct ContentView: View {
 
     private var mainContent: some View {
         VStack(spacing: 12) {
+            modePickerBar
             modeSpecificContent
                 .padding(.horizontal)
+        }
+    }
+
+    private var modePickerBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(InputMode.allCases) { mode in
+                    Button {
+                        selectedMode = mode
+                    } label: {
+                        Label(mode.label, systemImage: mode.systemImage)
+                            .labelStyle(.titleAndIcon)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(selectedMode == mode ? Color.white : .primary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(minWidth: 120)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(selectedMode == mode ? Color.accentColor : Color.secondary.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
         }
     }
 
@@ -342,165 +370,7 @@ struct ContentView: View {
     }
 
     private var mouseSection: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                // 上部: 設定エリア（最小限）
-                HStack {
-                    // 接続状態インジケーター
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(bleManager.isConnected ? Color.green : Color.orange)
-                            .frame(width: 6, height: 6)
-                        Text(bleManager.isConnected ? "接続済み" : "未接続")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .opacity(0.7)
-
-                    Spacer()
-
-                    // 設定ボタン（小さく）
-                    Menu {
-                        Section("モード") {
-                            ForEach(InputMode.allCases) { mode in
-                                Button {
-                                    selectedMode = mode
-                                } label: {
-                                    Label(mode.label, systemImage: mode.systemImage)
-                                    if selectedMode == mode {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                        Divider()
-                        Section("接続") {
-                            if bleManager.isConnected {
-                                Button("切断") { bleManager.disconnect() }
-                                Button("デバイス再選択") { showDeviceList = true }
-                            } else {
-                                Button("デバイスをスキャン") { showDeviceList = true }
-                            }
-                        }
-                        Divider()
-                        Section("設定") {
-                            Button("詳細設定") { isSettingsPresented = true }
-                            if bleManager.isDebugEnabled {
-                                Button("デバッグログ") { isDebugModalPresented = true }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                            .frame(width: 30, height: 30)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                            .opacity(0.8)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .frame(height: 44)
-
-                // メイン: トラックパッドエリア
-                ZStack {
-                    // 背景とボーダー
-                    Rectangle()
-                        .fill(.clear)
-                        .background(.thinMaterial)
-                        .overlay(
-                            Rectangle()
-                                .stroke(.quaternary, lineWidth: 0.5)
-                        )
-
-                    HStack(spacing: 1) {
-                        // トラックパッド本体
-                        TrackpadSurface(
-                            sensitivity: trackpadSensitivity,
-                            tapToClick: tapToClickEnabled,
-                            onMove: { dx, dy in
-                                bleManager.sendMouseMove(dx: dx, dy: dy)
-                            },
-                            onLeftTap: {
-                                if tapToClickEnabled {
-                                    bleManager.sendMouseClick(.left)
-                                }
-                            },
-                            onDoubleTap: {
-                                bleManager.sendMouseDoubleClick(.left)
-                            },
-                            onRightTap: {
-                                bleManager.sendMouseClick(.right)
-                            }
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        // スクロールエリア（右端、より使いやすく）
-                        ScrollStrip(
-                            sensitivity: trackpadSensitivity,
-                            onScroll: { delta in
-                                bleManager.sendMouseScroll(dy: delta)
-                            }
-                        )
-                        .frame(width: 60)
-                        .frame(maxHeight: .infinity)
-                        .background(.regularMaterial)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // 下部: クリックボタンエリア
-                VStack(spacing: 0) {
-                    HStack(spacing: 1) {
-                        Button {
-                            bleManager.sendMouseClick(.left)
-                        } label: {
-                            Text("L")
-                                .font(.system(size: 18, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                        .background(.thinMaterial)
-                        .disabled(!bleManager.isConnected)
-
-                        Button {
-                            bleManager.sendMouseClick(.middle)
-                        } label: {
-                            Text("M")
-                                .font(.system(size: 18, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                        .background(.thinMaterial)
-                        .disabled(!bleManager.isConnected)
-
-                        Button {
-                            bleManager.sendMouseClick(.right)
-                        } label: {
-                            Text("R")
-                                .font(.system(size: 18, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                        .background(.thinMaterial)
-                        .disabled(!bleManager.isConnected)
-                    }
-                    .frame(height: 70)
-                    .overlay(
-                        Rectangle()
-                            .stroke(.quaternary, lineWidth: 0.5)
-                    )
-
-                    // 下部の余白
-                    Spacer()
-                        .frame(height: 16)
-                }
-            }
-        }
+        MouseModeView(flowManager: opticalFlowManager)
     }
 
     private var keyboardToolbar: some ToolbarContent {
@@ -761,11 +631,18 @@ struct ContentView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 isTextFieldFocused = true
             }
+            opticalFlowManager.stop()
         case .keyboard, .mouse:
             isTextFieldFocused = false
+            if mode == .mouse {
+                opticalFlowManager.start()
+            } else {
+                opticalFlowManager.stop()
+            }
         case .flick:
             isTextFieldFocused = false
             ensureJapaneseImeForFlickIfPossible()
+            opticalFlowManager.stop()
         }
 
         flickCommitHistory = nil
@@ -1533,4 +1410,3 @@ struct DebugLogView: View {
 #Preview {
     ContentView()
 }
-
