@@ -15,12 +15,15 @@ struct ContentView: View {
     @FocusState private var isTextFieldFocused: Bool
     @State private var parsedLayout: ParsedKeyboardLayout?
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(\.verticalSizeClass) var verticalSizeClass
     @State private var selectedMode: InputMode = .keyboard
     @State private var trackpadSensitivity: Double = 1.4
     @State private var tapToClickEnabled = true
     @State private var flickCommitHistory: FlickCommitHistory?
     @State private var isDebugModalPresented = false
     @State private var isSettingsPresented = false
+    @State private var trackpadOnLeft = true // 横持ちモードでの配置設定
+    @State private var isLandscapeMode = false
 
     private static let logDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -55,12 +58,22 @@ struct ContentView: View {
         }
     }
 
+    // 横向きモードかどうかを判定
+    private var isLandscape: Bool {
+        return isLandscapeMode
+    }
+
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
+            ZStack {
             // メインコンテンツ
             if selectedMode == .mouse {
                 // マウスモードでは全画面トラックパッド
                 mouseSection
+                    .ignoresSafeArea(.all)
+            } else if isLandscape && selectedMode == .flick {
+                // 横持ちフリックモードでは全画面レイアウト
+                landscapeFlickLayout()
                     .ignoresSafeArea(.all)
             } else {
                 // 他のモードでは通常のScrollView
@@ -74,7 +87,9 @@ struct ContentView: View {
             }
 
             // 右上の設定ボタンとステータス（最小限のUI）
-            VStack {
+            // 横持ちフリックモード時は非表示
+            if !(isLandscape && selectedMode == .flick) {
+                VStack {
                 HStack {
                     Spacer()
 
@@ -169,6 +184,7 @@ struct ContentView: View {
                 .padding(.top, 8)
 
                 Spacer()
+                }
             }
         }
         .toolbar { keyboardToolbar }
@@ -182,26 +198,39 @@ struct ContentView: View {
             SettingsView(
                 trackpadSensitivity: $trackpadSensitivity,
                 tapToClickEnabled: $tapToClickEnabled,
+                trackpadOnLeft: $trackpadOnLeft,
                 isPresented: $isSettingsPresented
             )
         }
         .safeAreaInset(edge: .bottom) {
             Group {
-                switch selectedMode {
-                case .keyboard:
-                    if let layout = parsedLayout {
-                        keyboardInset(layout: layout)
-                    } else {
+                // 横持ちフリックモード時は非表示
+                if !(isLandscape && selectedMode == .flick) {
+                    switch selectedMode {
+                    case .keyboard:
+                        if let layout = parsedLayout {
+                            keyboardInset(layout: layout)
+                        } else {
+                            EmptyView()
+                        }
+                    case .flick:
+                        flickKeyboardInset()
+                    default:
                         EmptyView()
                     }
-                case .flick:
-                    flickKeyboardInset()
-                default:
-                    EmptyView()
+                }
+            }
+            .onChange(of: geometry.size) { _, newSize in
+                let newIsLandscape = newSize.width > newSize.height
+                if newIsLandscape != isLandscapeMode {
+                    print("画面サイズが変更されました: \(newSize), 横向き = \(newIsLandscape)")
+                    isLandscapeMode = newIsLandscape
                 }
             }
         }
-        .onAppear { handleOnAppear() }
+        .onAppear {
+            handleOnAppear()
+        }
         .onChange(of: selectedMode) { _, newMode in
             handleModeChange(newMode)
         }
@@ -209,6 +238,7 @@ struct ContentView: View {
             if isConnected {
                 ensureJapaneseImeForFlickIfPossible()
             }
+        }
         }
     }
 
@@ -506,16 +536,185 @@ struct ContentView: View {
     @ViewBuilder
     private func flickKeyboardInset() -> some View {
         let isMobile = horizontalSizeClass == .compact
-        VStack(spacing: isMobile ? 6 : 10) {
-            trackpadSection(isMobile: isMobile)
 
-            FlickKeyboardView(isCompact: isMobile) { entry, metadata in
-                handleFlickCommit(entry, metadata: metadata)
+        if isLandscape && selectedMode == .flick {
+            // 横持ちモードでは画面を左右に分割
+            landscapeFlickLayout()
+        } else {
+            // 通常の縦持ちレイアウト
+            VStack(spacing: isMobile ? 6 : 10) {
+                trackpadSection(isMobile: isMobile)
+
+                FlickKeyboardView(isCompact: isMobile) { entry, metadata in
+                    handleFlickCommit(entry, metadata: metadata)
+                }
+            }
+            .padding(.horizontal, isMobile ? 6 : 16)
+            .padding(.vertical, isMobile ? 8 : 10)
+            .background(.ultraThinMaterial)
+        }
+    }
+
+    @ViewBuilder
+    private func landscapeFlickLayout() -> some View {
+        HStack(spacing: 2) {
+            if trackpadOnLeft {
+                // 左側にトラックパッド
+                landscapeTrackpadView()
+                    .frame(maxWidth: .infinity)
+
+                // 右側にフリックキーボード
+                landscapeFlickKeyboard()
+                    .frame(maxWidth: .infinity)
+            } else {
+                // 左側にフリックキーボード
+                landscapeFlickKeyboard()
+                    .frame(maxWidth: .infinity)
+
+                // 右側にトラックパッド
+                landscapeTrackpadView()
+                    .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, isMobile ? 6 : 16)
-        .padding(.vertical, isMobile ? 8 : 10)
+        .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder
+    private func landscapeTrackpadView() -> some View {
+        VStack(spacing: 0) {
+            // 上部: 設定エリア（最小限）
+            HStack {
+                // 接続状態インジケーター
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(bleManager.isConnected ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text(bleManager.isConnected ? "接続済み" : "未接続")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .opacity(0.7)
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(height: 32)
+
+            // メイン: トラックパッドエリア
+            ZStack {
+                // 背景とボーダー
+                Rectangle()
+                    .fill(.clear)
+                    .background(.thinMaterial)
+                    .overlay(
+                        Rectangle()
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    )
+
+                HStack(spacing: 1) {
+                    // トラックパッド本体
+                    TrackpadSurface(
+                        sensitivity: trackpadSensitivity,
+                        tapToClick: tapToClickEnabled,
+                        onMove: { dx, dy in
+                            bleManager.sendMouseMove(dx: dx, dy: dy)
+                        },
+                        onLeftTap: {
+                            if tapToClickEnabled {
+                                bleManager.sendMouseClick(.left)
+                            }
+                        },
+                        onDoubleTap: {
+                            bleManager.sendMouseDoubleClick(.left)
+                        },
+                        onRightTap: {
+                            bleManager.sendMouseClick(.right)
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    // スクロールエリア（右端）
+                    ScrollStrip(
+                        sensitivity: trackpadSensitivity,
+                        onScroll: { delta in
+                            bleManager.sendMouseScroll(dy: delta)
+                        }
+                    )
+                    .frame(width: 40)
+                    .frame(maxHeight: .infinity)
+                    .background(.regularMaterial)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 下部: クリックボタンエリア
+            VStack(spacing: 0) {
+                HStack(spacing: 1) {
+                    Button {
+                        bleManager.sendMouseClick(.left)
+                    } label: {
+                        Text("L")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.thinMaterial)
+                    .disabled(!bleManager.isConnected)
+
+                    Button {
+                        bleManager.sendMouseClick(.middle)
+                    } label: {
+                        Text("M")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.thinMaterial)
+                    .disabled(!bleManager.isConnected)
+
+                    Button {
+                        bleManager.sendMouseClick(.right)
+                    } label: {
+                        Text("R")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .background(.thinMaterial)
+                    .disabled(!bleManager.isConnected)
+                }
+                .frame(height: 50)
+                .overlay(
+                    Rectangle()
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func landscapeFlickKeyboard() -> some View {
+        VStack(spacing: 0) {
+            // 上部のスペース
+            Spacer()
+                .frame(height: 16)
+
+            // フリックキーボード
+            FlickKeyboardView(isCompact: false) { entry, metadata in
+                handleFlickCommit(entry, metadata: metadata)
+            }
+            .padding(.horizontal, 12)
+
+            // 下部のスペース
+            Spacer()
+                .frame(height: 16)
+        }
+        .background(.regularMaterial)
     }
 
     @ViewBuilder
@@ -542,6 +741,7 @@ struct ContentView: View {
             .padding(.bottom, 4)
         }
     }
+
 
     private func handleOnAppear() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -1193,6 +1393,7 @@ struct DeviceListView: View {
 struct SettingsView: View {
     @Binding var trackpadSensitivity: Double
     @Binding var tapToClickEnabled: Bool
+    @Binding var trackpadOnLeft: Bool
     @Binding var isPresented: Bool
 
     var body: some View {
@@ -1210,6 +1411,22 @@ struct SettingsView: View {
                     }
 
                     Toggle("タップでクリック", isOn: $tapToClickEnabled)
+                }
+
+                Section("レイアウト設定") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("横持ちモード", systemImage: "rotate.right")
+                            .font(.headline)
+                        Text("横向きでフリックキーボードを使用する際のレイアウトです")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Picker("トラックパッド位置", selection: $trackpadOnLeft) {
+                        Text("左側").tag(true)
+                        Text("右側").tag(false)
+                    }
+                    .pickerStyle(.segmented)
                 }
             }
             .navigationTitle("詳細設定")
