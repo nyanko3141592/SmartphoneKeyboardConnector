@@ -49,10 +49,12 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     private var lastPublishTime = Date.distantPast
     private var isProcessingFrames = false
     private var previousPixelBuffer: CVPixelBuffer?
+    private var activeDevice: AVCaptureDevice?
     private let publishInterval: TimeInterval = 0.05 // 20HzでUI更新
     private let smoothingFactor: Double = 0.25
     private let historyLimit = 30
     private let displayScale: Double = 120 // 値を見やすくするためのスケール
+    private let preferredTorchLevel: Float = 0.8
 
     func start() {
         requestCameraAccessIfNeeded { [weak self] granted in
@@ -74,11 +76,13 @@ final class OpticalFlowManager: NSObject, ObservableObject {
                     }
                     guard !self.captureSession.isRunning else {
                         self.resetSequence()
+                        self.updateCameraEnhancements(enabled: true)
                         DispatchQueue.main.async { self.status = .running }
                         return
                     }
                     self.resetSequence()
                     self.captureSession.startRunning()
+                    self.updateCameraEnhancements(enabled: true)
                     self.processingQueue.async { self.isProcessingFrames = true }
                     DispatchQueue.main.async { self.status = .running }
                 } catch {
@@ -91,6 +95,7 @@ final class OpticalFlowManager: NSObject, ObservableObject {
     func stop() {
         sessionQueue.async {
             guard self.captureSession.isRunning else { return }
+            self.updateCameraEnhancements(enabled: false)
             self.processingQueue.async { self.isProcessingFrames = false }
             self.captureSession.stopRunning()
             self.resetSequence()
@@ -106,10 +111,8 @@ final class OpticalFlowManager: NSObject, ObservableObject {
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .vga640x480
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) ??
-                AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .unspecified) else {
-            throw NSError(domain: "OpticalFlowManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "カメラデバイスが見つかりません"])
-        }
+        let device = try selectBestCamera()
+        activeDevice = device
 
         let input = try AVCaptureDeviceInput(device: device)
         if captureSession.canAddInput(input) {
@@ -155,6 +158,59 @@ final class OpticalFlowManager: NSObject, ObservableObject {
         request.computationAccuracy = .high
         request.outputPixelFormat = kCVPixelFormatType_TwoComponent32Float
         return request
+    }
+
+    private func selectBestCamera() throws -> AVCaptureDevice {
+        let types: [AVCaptureDevice.DeviceType] = [
+            .builtInUltraWideCamera,
+            .builtInTelephotoCamera,
+            .builtInWideAngleCamera
+        ]
+        let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .back)
+        for type in types {
+            if let device = discovery.devices.first(where: { $0.deviceType == type }) {
+                return device
+            }
+        }
+        if let fallback = AVCaptureDevice.default(for: .video) {
+            return fallback
+        }
+        throw NSError(domain: "OpticalFlowManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "カメラデバイスが見つかりません"])
+    }
+
+    private func updateCameraEnhancements(enabled: Bool) {
+        guard let device = activeDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+
+            if enabled {
+                if device.hasTorch, device.isTorchModeSupported(.on) {
+                    let level = min(preferredTorchLevel, AVCaptureDevice.maxAvailableTorchLevel)
+                    try? device.setTorchModeOn(level: level)
+                }
+
+                if device.isExposureModeSupported(.custom) {
+                    let currentDuration = device.exposureDuration
+                    let currentISO = device.iso
+                    device.setExposureModeCustom(duration: currentDuration, iso: currentISO, completionHandler: nil)
+                } else if device.isExposureModeSupported(.locked) {
+                    device.exposureMode = .locked
+                }
+
+                device.isSubjectAreaChangeMonitoringEnabled = false
+            } else {
+                if device.hasTorch, device.isTorchModeSupported(.off) {
+                    device.torchMode = .off
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                device.isSubjectAreaChangeMonitoringEnabled = true
+            }
+        } catch {
+            handle(error: error)
+        }
     }
 
     private func handle(error: Error) {
